@@ -2,7 +2,7 @@
 #include "CatalogSaveTypes.h"
 #include "EngineDefines.h"
 #include "Misc/AutomationTest.h"
-#include "SamplePlayerSaveComponent.h"
+#include "../SamplePlayerSaveComponent.h"
 #include <limits>
 
 #if WITH_DEV_AUTOMATION_TESTS

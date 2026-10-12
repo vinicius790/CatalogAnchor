@@ -18,6 +18,9 @@ import ue  # noqa: E402
 UPROJECT = str(ROOT / "SampleProject" / "SampleCatalog.uproject")
 
 
+_REAL_PROGRAM_FILES_LOOKUP = ue.program_files_engine_dir  # a fixture no_engine_env o substitui
+
+
 def _fake_engine(base: Path, platform: str = "Linux") -> Path:
     """Instalação mínima: o marcador Engine/Build/BatchFiles + os executáveis que os comandos chamam."""
     engine = base / "UE_5.8"
@@ -64,6 +67,7 @@ def no_engine_env(monkeypatch):
     monkeypatch.delenv("UE_ROOT", raising=False)
     monkeypatch.setattr(ue, "registry_engine_dir", lambda version: None)
     monkeypatch.setattr(ue, "launcher_engine_dir", lambda version: None)
+    monkeypatch.setattr(ue, "program_files_engine_dir", lambda version: None)
     monkeypatch.setattr(ue, "host_platform", lambda: "Linux")
     return monkeypatch
 
@@ -251,6 +255,21 @@ def test_find_engine_falls_back_to_launcher(no_engine_env, tmp_path: Path):
     no_engine_env.setattr(ue, "launcher_engine_dir", lambda version: str(engine) if version == "5.8" else None)
     assert ue.find_engine() == engine
     assert ue.find_engine(version="5.9") is None
+
+
+def test_program_files_scan_finds_launcher_default_install(monkeypatch, tmp_path: Path):
+    engine = tmp_path / "pf" / "Epic Games" / "UE_5.8"
+    (engine / "Engine" / "Build" / "BatchFiles").mkdir(parents=True)
+    monkeypatch.setenv("ProgramFiles", str(tmp_path / "vazio"))
+    monkeypatch.setenv("ProgramFiles(x86)", str(tmp_path / "pf"))
+    assert _REAL_PROGRAM_FILES_LOOKUP("5.8") == str(engine)
+    assert _REAL_PROGRAM_FILES_LOOKUP("5.9") is None
+
+
+def test_find_engine_falls_back_to_program_files(no_engine_env, tmp_path: Path):
+    engine = _fake_engine(tmp_path)
+    no_engine_env.setattr(ue, "program_files_engine_dir", lambda version: str(engine))
+    assert ue.find_engine() == engine
 
 
 def test_registry_lookup_of_unknown_version_is_none():

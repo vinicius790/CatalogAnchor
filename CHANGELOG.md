@@ -7,6 +7,8 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) · versões
 ## [0.4.0] — 2026-10-12
 
 ### Adicionado
+- `tools/get_msvc.py`: baixa MSVC 14.44 + Windows SDK 22621 + NetFx 4.6.2 (canal oficial) no layout AutoSDK, sem instalar nada; `UE_SDKS_ROOT` aponta o UBT para ele.
+- **Primeira compilação real:** build do `SampleCatalogEditor` OK e 33/33 testes de automação passando (UE 5.8.3).
 - **Vida:** `SetHealth` (restaurar save; limita, ignora não finito, revive com valor > 0).
 - **Save:** gerações de load: cada load entrega o payload a todos os registrados, e o mesmo objeto
   re-registrando na mesma geração não relê. Registrar outro objeto com a mesma chave o substitui (respawn).
@@ -30,6 +32,7 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) · versões
 - `CatalogAnchor.uplugin`: `VersionName` 0.4.0.
 
 ### Corrigido
+- Sample: include do teste `SamplePlayerSaveTests.cpp` (único erro de compilação real encontrado).
 - Sample: clientes podiam nunca ver a morte do jogador (`ResetHealth` no mesmo frame fundia 0 e 100 no OnRep).
 - Melee Sweep ignora alvo destruído por um dano anterior da mesma varredura.
 

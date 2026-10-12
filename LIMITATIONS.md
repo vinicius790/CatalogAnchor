@@ -2,11 +2,12 @@
 
 ## Estado real da verificação
 
-- **O C++ nunca foi compilado.** A máquina de desenvolvimento tem a UE 5.8.3, mas o UBT para em
-  "Platform Win64 is not a valid platform to build. SDK validation failed: Sdk: not found": falta o
-  MSVC 14.44 (VS 2022 17.14) ou 14.50 (VS 2026) e o Windows SDK ≥ 10.0.19041. O CI público não tem engine,
-  e o workflow `ue.yml` (runner self-hosted) ainda não rodou.
-- **Testes de automação (33) não executados.** Só o tooling Python roda de fato (validador, lint, pytest).
+- **Compilado e testado (Windows, UE 5.8.3, MSVC 14.44.35229, Windows SDK 22621):** `SampleCatalogEditor`
+  (plugin Runtime + Editor + sample) compila sem erros e os **33 testes de automação** passam no
+  `UnrealEditor-Cmd` (exit code 0, `index.json`: 33 Success / 0 Fail). A toolchain veio de `tools/get_msvc.py`
+  (pacotes oficiais, sem Visual Studio) via `UE_SDKS_ROOT`; o repo foi compilado a partir de um caminho ASCII.
+- Os "Condition failed" no startup do editor (14 linhas) vêm do MetaSound da engine, não do projeto.
+- O CI público não tem engine; o workflow `ue.yml` (runner self-hosted) ainda não rodou num runner real.
 - **Testes de rede MP-01..MP-07** ([docs/MULTIPLAYER_TESTS.md](docs/MULTIPLAYER_TESTS.md)) não executados.
 - As assinaturas de API mais arriscadas foram conferidas lendo os headers da 5.8.3
   ([docs/TECNOLOGIAS.md](docs/TECNOLOGIAS.md)); isso não substitui compilar.

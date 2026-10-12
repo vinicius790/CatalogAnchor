@@ -2,7 +2,8 @@
 r"""Comandos que exigem Unreal Engine 5.8+ instalada: empacotar o plugin e rodar os testes de automação.
 
 Engine: --engine <pasta> > env UE_ROOT > registro Windows (HKLM\SOFTWARE\EpicGames\Unreal Engine\<--version>,
-default 5.8) > %ProgramData%\Epic\UnrealEngineLauncher\LauncherInstalled.dat (AppName "UE_<--version>").
+default 5.8) > %ProgramData%\Epic\UnrealEngineLauncher\LauncherInstalled.dat (AppName "UE_<--version>")
+> %ProgramFiles%\Epic Games\UE_<--version> (e %ProgramFiles(x86)%), onde o Launcher instala por padrão.
 A pasta é a raiz da instalação (a que contém Engine/), ex.: "C:/Program Files/Epic Games/UE_5.8".
 
 build-plugin: RunUAT BuildPlugin -> dist/CatalogAnchor (logs do UAT/UBT em <report-dir>/UAT).
@@ -40,9 +41,9 @@ EXIT_TESTS_FAILED = 1
 # UnrealBuildTool/Configuration/UEBuildPlatform.cs (UE 5.8): "Platform X is not a valid platform to build. ..."
 SDK_ERROR = "is not a valid platform to build"
 SDK_HINTS = {
-    "Win64": "instale o Visual Studio 2022 17.14 (MSVC 14.44) ou 2026 (MSVC 14.50) / Build Tools com a carga "
-    "'Desenvolvimento para desktop com C++' + Windows SDK 10.0.22621 (mínimo 10.0.19041); "
-    "requisitos em Engine/Config/Windows/Windows_SDK.json",
+    "Win64": "rode `py -3 tools/get_msvc.py` e defina UE_SDKS_ROOT=<destino> (MSVC 14.44 + Windows SDK 22621 "
+    "portáteis, sem instalar nada), ou instale o Visual Studio 2022 17.14 / Build Tools com a carga "
+    "'Desenvolvimento para desktop com C++'; requisitos em Engine/Config/Windows/Windows_SDK.json",
     "Mac": "instale o Xcode exigido em Engine/Config/Apple/Apple_SDK.json",
     "Linux": "instale o toolchain clang cross/nativo que a Epic indica para a UE 5.8",
 }
@@ -85,9 +86,25 @@ def launcher_engine_dir(version: str = ENGINE_VERSION, dat: Path | None = None) 
     return None
 
 
+def program_files_engine_dir(version: str = ENGINE_VERSION) -> str | None:
+    """Último recurso: o Launcher instala em <ProgramFiles>/Epic Games/UE_<versão> mesmo sem registro nem .dat."""
+    for var in ("ProgramFiles", "ProgramFiles(x86)"):
+        base = os.environ.get(var)
+        candidate = Path(base) / "Epic Games" / f"UE_{version}" if base else None
+        if candidate and (candidate / "Engine" / "Build" / "BatchFiles").is_dir():
+            return str(candidate)
+    return None
+
+
 def find_engine(explicit: str | None = None, version: str = ENGINE_VERSION) -> Path | None:
     """Raiz da engine. A primeira fonte informada decide: um --engine errado não cai silenciosamente no registro."""
-    raw = explicit or os.environ.get("UE_ROOT") or registry_engine_dir(version) or launcher_engine_dir(version)
+    raw = (
+        explicit
+        or os.environ.get("UE_ROOT")
+        or registry_engine_dir(version)
+        or launcher_engine_dir(version)
+        or program_files_engine_dir(version)
+    )
     if not raw:
         return None
     path = Path(raw).expanduser()
@@ -236,7 +253,8 @@ def build_failed(rc: int, platform: str, logs: list[Path]) -> int:
 def main(argv: list[str] | None = None) -> int:
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument(
-        "--engine", help="raiz da engine (pasta com Engine/); default: UE_ROOT, registro ou LauncherInstalled.dat"
+        "--engine",
+        help="raiz da engine (pasta com Engine/); default: UE_ROOT, registro, LauncherInstalled.dat ou Program Files",
     )
     common.add_argument("--dry-run", action="store_true", help="só imprime os comandos")
     common.add_argument(

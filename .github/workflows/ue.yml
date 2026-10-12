@@ -32,7 +32,15 @@ jobs:
       PYTHONIOENCODING: utf-8
       REPORTS: ${{ github.workspace }}/ue-reports
     steps:
+      # clean: false mantém Intermediate/Binaries (ignorados pelo git) do workspace do runner: build incremental.
+      # A reprodutibilidade vem do checkout --force (tracked) + git clean -fd (untracked não ignorado) + Saved/Reports.
       - uses: actions/checkout@v5
+        with:
+          clean: false
+      - name: Limpar relatórios e arquivos soltos (mantém Intermediate/Binaries)
+        run: |
+          git clean -fd
+          if (Test-Path Saved/Reports) { Remove-Item -Recurse -Force Saved/Reports }
       - name: BuildPlugin (RunUAT)
         run: py -3 tools/ue.py build-plugin --report-dir "${{ env.REPORTS }}/build-plugin"
       - name: Build SampleCatalogEditor + testes de automação
