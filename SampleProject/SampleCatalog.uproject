@@ -1,0 +1,26 @@
+{
+	"FileVersion": 3,
+	"EngineAssociation": "5.8",
+	"Category": "Catalog Sample",
+	"Description": "Sample jogável do plugin CatalogAnchor montado 100% em C++ (sem .uasset/.umap): interação com hold, inventário, habilidades e save.",
+	"Modules": [
+		{
+			"Name": "SampleCatalog",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		}
+	],
+	"Plugins": [
+		{
+			"Name": "CatalogAnchor",
+			"Enabled": true
+		},
+		{
+			"Name": "EnhancedInput",
+			"Enabled": true
+		}
+	],
+	"AdditionalPluginDirectories": [
+		"../Plugins"
+	]
+}

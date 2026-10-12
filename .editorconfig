@@ -1,0 +1,38 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+# C++/C# no padrão Epic: TABs (o validador reprova linha começando com 4 espaços).
+[*.{h,hpp,cpp,inl,cs}]
+indent_style = tab
+indent_size = 4
+tab_width = 4
+
+# BOM só no C++: sem ele o MSVC lê o fonte na codepage do Windows e corrompe acentos em TEXT()/LOCTEXT.
+# (.cs fica em UTF-8 sem BOM: o compilador C# já assume UTF-8.)
+[*.{h,hpp,cpp,inl}]
+charset = utf-8-bom
+
+# .uplugin/.uproject: o editor da Unreal grava com TABs.
+[*.{uplugin,uproject}]
+indent_style = tab
+indent_size = 4
+
+[*.{py,toml}]
+indent_style = space
+indent_size = 4
+
+[*.{yml,yaml,json,md}]
+indent_style = space
+indent_size = 2
+
+# Dois espaços no fim da linha são quebra de linha em Markdown.
+[*.md]
+trim_trailing_whitespace = false
+
+[*.{bat,cmd}]
+end_of_line = crlf

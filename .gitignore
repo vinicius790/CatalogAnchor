@@ -1,0 +1,25 @@
+# Unreal — nunca versionar (catálogo: Versionamento engine/DCC)
+Binaries/
+Intermediate/
+DerivedDataCache/
+Saved/
+*.VC.db
+*.opendb
+*.sln
+*.suo
+*.xcodeproj
+*.xcworkspace
+.vs/
+.idea/
+
+# Host / Python
+dist/
+__pycache__/
+.pytest_cache/
+.venv/
+*.pyc
+.mypy_cache/
+
+# OS
+.DS_Store
+Thumbs.db

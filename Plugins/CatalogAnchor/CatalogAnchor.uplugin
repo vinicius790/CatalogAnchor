@@ -1,0 +1,51 @@
+{
+	"FileVersion": 3,
+	"Version": 3,
+	"VersionName": "0.3.0",
+	"FriendlyName": "Catalog Anchor (UE5)",
+	"Description": "Unreal Engine 5.8+. Plugin C++ Runtime+Editor de gameplay reutilizável: interação replicada com hold, inventário em FastArray, habilidades com Gameplay Tags e cooldown replicado, vida replicada com dano/cura/morte, save versionado com migração e Data Validation. Não é um jogo cozido.",
+	"Category": "Gameplay",
+	"CreatedBy": "Geraliza Castlevania",
+	"CreatedByURL": "",
+	"DocsURL": "",
+	"MarketplaceURL": "",
+	"SupportURL": "",
+	"CanContainContent": true,
+	"IsBetaVersion": true,
+	"IsExperimentalVersion": false,
+	"Installed": false,
+	"Modules": [
+		{
+			"Name": "CatalogAnchor",
+			"Type": "Runtime",
+			"LoadingPhase": "Default",
+			"PlatformAllowList": [
+				"Win64",
+				"Linux",
+				"Mac"
+			]
+		},
+		{
+			"Name": "CatalogAnchorEditor",
+			"Type": "Editor",
+			"LoadingPhase": "Default",
+			"PlatformAllowList": [
+				"Win64",
+				"Linux",
+				"Mac"
+			]
+		}
+	],
+	"Plugins": [
+		{
+			"Name": "DataValidation",
+			"Enabled": true
+		},
+		{
+			"Name": "GameplayAbilities",
+			"Enabled": false,
+			"Optional": true,
+			"Description": "Habilite para a variante GAS (dash/melee) descrita no MVP do catálogo §8."
+		}
+	]
+}

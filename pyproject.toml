@@ -1,0 +1,7 @@
+# Só configuração de ferramentas host-side (o plugin é C++/UBT; não há pacote Python aqui).
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]

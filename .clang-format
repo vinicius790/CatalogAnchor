@@ -1,0 +1,28 @@
+# Aproximação do Epic C++ Coding Standard (UE 5.8). Formate só arquivos que você tocou.
+---
+Language: Cpp
+BasedOnStyle: LLVM
+Standard: c++20
+ColumnLimit: 0
+UseTab: ForContinuationAndIndentation
+IndentWidth: 4
+TabWidth: 4
+ContinuationIndentWidth: 4
+AccessModifierOffset: -4
+BreakBeforeBraces: Allman
+NamespaceIndentation: All
+IndentCaseLabels: true
+PointerAlignment: Left
+AlignAfterOpenBracket: DontAlign
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortBlocksOnASingleLine: Never
+AlwaysBreakTemplateDeclarations: Yes
+BreakConstructorInitializers: BeforeComma
+ConstructorInitializerIndentWidth: 4
+FixNamespaceComments: false
+MaxEmptyLinesToKeep: 2
+ReflowComments: false
+# Nunca reordenar includes: o "X.generated.h" tem de continuar sendo o último.
+SortIncludes: false

@@ -1,0 +1,14 @@
+# Texto normalizado para LF no repositório e no checkout (inclusive no Windows).
+* text=auto eol=lf
+
+# Scripts do cmd.exe precisam de CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Assets Unreal são binários: sem diff/merge textual.
+*.uasset binary
+*.umap binary
+
+# Quando houver Content/ versionado, troque pelas linhas abaixo (exige `git lfs install`):
+# *.uasset filter=lfs diff=lfs merge=lfs -text
+# *.umap filter=lfs diff=lfs merge=lfs -text
