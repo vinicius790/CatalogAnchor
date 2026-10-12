@@ -2,6 +2,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Engine/TimerHandle.h"
 #include "GameFramework/Character.h"
 #include "SampleCatalogCharacter.generated.h"
 
@@ -12,6 +13,7 @@ class UCatalogInteractionComponent;
 class UCatalogInventoryComponent;
 class UInputAction;
 class UInputMappingContext;
+class USamplePlayerSaveComponent;
 class USpringArmComponent;
 class UStaticMeshComponent;
 struct FInputActionValue;
@@ -19,7 +21,9 @@ struct FInputActionValue;
 /**
  * Personagem do sample: 3ª pessoa + os três componentes do plugin.
  * Entrada via Enhanced Input criado em código (sem assets): as ações e o mapping context
- * nascem na primeira vez que o pawn é controlado localmente — input nunca replica.
+ * nascem na primeira vez que o pawn é controlado localmente — input nunca replica. O contexto é
+ * adicionado ao ser possuído por um PlayerController local e removido ao perder o controller ou sair
+ * do jogo, para não sobrar no LocalPlayer quando outro pawn é possuído.
  */
 UCLASS()
 class ASampleCatalogCharacter : public ACharacter
@@ -54,8 +58,13 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Catalog|Sample")
 	TObjectPtr<UCatalogHealthComponent> Health;
 
+	/** Grava/lê posição e vida no save (participante do UCatalogSaveSubsystem). */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Catalog|Sample")
+	TObjectPtr<USamplePlayerSaveComponent> PlayerSave;
+
 protected:
 	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
 	virtual void NotifyControllerChanged() override;
 
@@ -63,13 +72,21 @@ protected:
 	UFUNCTION(Server, Reliable)
 	void ServerUsePotion();
 
-	/** Servidor: volta ao centro da arena com vida cheia (o inventário é mantido). */
+	/** Servidor: trava o movimento e agenda o respawn (atraso para os clientes verem a morte replicada). */
 	UFUNCTION()
 	void HandleDeath(AActor* Killer);
+
+	/** Servidor: volta ao centro da arena com vida cheia (o inventário é mantido). */
+	void Respawn();
+
+	FTimerHandle RespawnTimer;
 
 private:
 	/** Cria ações + mapping context uma vez (só na máquina que controla o pawn). */
 	void EnsureInputObjects();
+
+	/** Tira o MappingContext do LocalPlayer desse controller (se for um PlayerController local). */
+	void RemoveInputContext(const AController* FromController) const;
 
 	void Move(const FInputActionValue& Value);
 	void Look(const FInputActionValue& Value);
@@ -81,9 +98,10 @@ private:
 	void UsePotion();
 	void QuickSave();
 	void QuickLoad();
+	void ToggleSaveMenu();
 
 	/** Aviso no HUD do jogador local (se houver). */
-	void ShowHUDMessage(const FString& Text) const;
+	void ShowHUDMessage(const FText& Text) const;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UInputMappingContext> MappingContext;
@@ -117,4 +135,7 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UInputAction> LoadAction;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UInputAction> SaveMenuAction;
 };

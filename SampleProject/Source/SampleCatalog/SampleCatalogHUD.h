@@ -5,9 +5,12 @@
 #include "GameFramework/HUD.h"
 #include "SampleCatalogHUD.generated.h"
 
+class USampleHUDWidget;
+class USampleSaveMenuWidget;
+
 /**
- * HUD em Canvas (sem UMG nem assets): mira, alvo/prompt/hold da interação, inventário,
- * cooldowns, avisos de save/load e ajuda de teclas. Só lê a API pública dos componentes do plugin.
+ * Dono da UI do jogador local. Texto e painéis são UMG em código (USampleHUDWidget e o menu de saves);
+ * no Canvas ficou só o que é projetado do mundo: mira, marcador do alvo e barras sobre os bonecos.
  */
 UCLASS()
 class ASampleCatalogHUD : public AHUD
@@ -18,21 +21,33 @@ public:
 	virtual void DrawHUD() override;
 
 	/** Aviso no topo da tela por alguns segundos (substitui o anterior). */
-	void ShowMessage(const FString& Text);
+	void ShowMessage(const FText& Text);
+
+	/** Abre/fecha o menu de saves, trocando o input entre UI e jogo. */
+	void ToggleSaveMenu();
+
+	void CloseSaveMenu();
 
 protected:
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 private:
+	/** Cria o HUD UMG na primeira vez em que o PlayerController já tem LocalPlayer (CreateWidget exige). */
+	USampleHUDWidget* EnsureHUDWidget();
+
+	void OpenSaveMenu();
+
 	UFUNCTION()
 	void HandleSaveCompleted(FName SlotName, bool bSuccess);
 
 	UFUNCTION()
 	void HandleLoadCompleted(FName SlotName, bool bSuccess);
 
-	FString Message;
+	UPROPERTY(Transient)
+	TObjectPtr<USampleHUDWidget> HUDWidget;
 
-	/** Em tempo real (s): o aviso some mesmo com o jogo pausado. */
-	double MessageHideTime = 0.0;
+	/** Não nulo = menu aberto. Recriado a cada abertura: a lista sempre reflete o disco. */
+	UPROPERTY(Transient)
+	TObjectPtr<USampleSaveMenuWidget> SaveMenu;
 };

@@ -2,17 +2,23 @@
 r"""Comandos que exigem Unreal Engine 5.8+ instalada: empacotar o plugin e rodar os testes de automação.
 
 Engine: --engine <pasta> > env UE_ROOT > registro Windows (HKLM\SOFTWARE\EpicGames\Unreal Engine\<--version>,
-default 5.8). A pasta é a raiz da instalação (a que contém Engine/), ex.: "C:/Program Files/Epic Games/UE_5.8".
+default 5.8) > %ProgramData%\Epic\UnrealEngineLauncher\LauncherInstalled.dat (AppName "UE_<--version>").
+A pasta é a raiz da instalação (a que contém Engine/), ex.: "C:/Program Files/Epic Games/UE_5.8".
+
+build-plugin: RunUAT BuildPlugin -> dist/CatalogAnchor (logs do UAT/UBT em <report-dir>/UAT).
+test: compila o target SampleCatalogEditor (Build.bat/Build.sh, log em <report-dir>/UBT.log), roda os testes
+      CatalogAnchor no editor headless e lê <report-dir>/index.json; sai != 0 se algo falhou ou se nenhum teste rodou.
 
 Exemplos:
   py -3 tools/ue.py build-plugin --dry-run
-  py -3 tools/ue.py test --engine "C:/Program Files/Epic Games/UE_5.8"
+  py -3 tools/ue.py test --engine "C:/Program Files/Epic Games/UE_5.8" --report-dir Saved/Reports
   py -3 tools/ue.py test --version 5.9
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import shlex
 import subprocess
@@ -25,9 +31,21 @@ ROOT = Path(__file__).resolve().parents[1]
 ENGINE_VERSION = "5.8"
 UPLUGIN = ROOT / "Plugins" / "CatalogAnchor" / "CatalogAnchor.uplugin"
 UPROJECT = ROOT / "SampleProject" / "SampleCatalog.uproject"
+EDITOR_TARGET = "SampleCatalogEditor"
 PACKAGE_DIR = ROOT / "dist" / "CatalogAnchor"
+REPORT_DIR = ROOT / "Saved" / "Reports"
 TEST_FILTER = "CatalogAnchor"
 EXIT_NO_ENGINE = 2
+EXIT_TESTS_FAILED = 1
+# UnrealBuildTool/Configuration/UEBuildPlatform.cs (UE 5.8): "Platform X is not a valid platform to build. ..."
+SDK_ERROR = "is not a valid platform to build"
+SDK_HINTS = {
+    "Win64": "instale o Visual Studio 2022 17.14 (MSVC 14.44) ou 2026 (MSVC 14.50) / Build Tools com a carga "
+    "'Desenvolvimento para desktop com C++' + Windows SDK 10.0.22621 (mínimo 10.0.19041); "
+    "requisitos em Engine/Config/Windows/Windows_SDK.json",
+    "Mac": "instale o Xcode exigido em Engine/Config/Apple/Apple_SDK.json",
+    "Linux": "instale o toolchain clang cross/nativo que a Epic indica para a UE 5.8",
+}
 
 
 def host_platform(system: str = sys.platform) -> str:
@@ -52,9 +70,24 @@ def registry_engine_dir(version: str = ENGINE_VERSION) -> str | None:
         return None
 
 
+def launcher_engine_dir(version: str = ENGINE_VERSION, dat: Path | None = None) -> str | None:
+    """InstallLocation de "UE_<versão>" no LauncherInstalled.dat (instalações do Launcher que não vão ao registro)."""
+    if dat is None:
+        program_data = Path(os.environ.get("ProgramData", r"C:\ProgramData"))
+        dat = program_data / "Epic" / "UnrealEngineLauncher" / "LauncherInstalled.dat"
+    try:
+        installs = json.loads(dat.read_text(encoding="utf-8-sig")).get("InstallationList", [])
+    except (OSError, ValueError, AttributeError):
+        return None
+    for item in installs:
+        if isinstance(item, dict) and item.get("AppName") == f"UE_{version}" and item.get("InstallLocation"):
+            return str(item["InstallLocation"])
+    return None
+
+
 def find_engine(explicit: str | None = None, version: str = ENGINE_VERSION) -> Path | None:
     """Raiz da engine. A primeira fonte informada decide: um --engine errado não cai silenciosamente no registro."""
-    raw = explicit or os.environ.get("UE_ROOT") or registry_engine_dir(version)
+    raw = explicit or os.environ.get("UE_ROOT") or registry_engine_dir(version) or launcher_engine_dir(version)
     if not raw:
         return None
     path = Path(raw).expanduser()
@@ -66,9 +99,23 @@ def runuat_path(engine: Path, platform: str) -> Path:
     return engine / "Engine" / "Build" / "BatchFiles" / script
 
 
+def build_script_path(engine: Path, platform: str) -> Path:
+    """Build.bat na raiz de BatchFiles (Win); Mac/Build.sh e Linux/Build.sh nas subpastas."""
+    batch = engine / "Engine" / "Build" / "BatchFiles"
+    return batch / "Build.bat" if platform == "Win64" else batch / platform / "Build.sh"
+
+
 def editor_cmd_path(engine: Path, platform: str) -> Path:
-    exe = "UnrealEditor-Cmd.exe" if platform == "Win64" else "UnrealEditor-Cmd"
-    return engine / "Engine" / "Binaries" / platform / exe
+    """Mesmo executável que o UAT usa (CommandletUtils.GetEditorCommandletExe, UE 5.8).
+
+    Mac: o bundle .app (não há garantia de UnrealEditor-Cmd no Mac). Mac e Linux não verificados em máquina real.
+    """
+    binaries = engine / "Engine" / "Binaries" / platform
+    if platform == "Win64":
+        return binaries / "UnrealEditor-Cmd.exe"
+    if platform == "Mac":
+        return binaries / "UnrealEditor.app" / "Contents" / "MacOS" / "UnrealEditor"
+    return binaries / "UnrealEditor"
 
 
 def build_plugin_command(engine: Path, platform: str) -> list[str]:
@@ -81,14 +128,32 @@ def build_plugin_command(engine: Path, platform: str) -> list[str]:
     ]
 
 
-def automation_test_command(engine: Path, platform: str) -> list[str]:
+def build_editor_command(engine: Path, platform: str, report_dir: Path) -> list[str]:
+    """UBT do target editor do sample (compila plugin + módulo do sample); -unattended não deixa o editor compilar."""
+    return [
+        str(build_script_path(engine, platform)),
+        EDITOR_TARGET,
+        platform,
+        "Development",
+        f"-Project={UPROJECT}",
+        "-WaitMutex",
+        f"-Log={report_dir / 'UBT.log'}",
+    ]
+
+
+def automation_test_command(engine: Path, platform: str, report_dir: Path) -> list[str]:
     return [
         str(editor_cmd_path(engine, platform)),
         str(UPROJECT),
         f"-ExecCmds=Automation RunTests {TEST_FILTER}; Quit",
+        # Rede de segurança: o Quit acima já encerra com o exit code dos testes.
+        "-TestExit=Automation Test Queue Empty",
+        f"-ReportExportPath={report_dir}",
+        f"-ABSLOG={report_dir / 'Editor.log'}",
         "-unattended",
         "-nullrhi",
         "-nosplash",
+        "-NoSound",
         "-nopause",
         "-log",
     ]
@@ -112,15 +177,78 @@ def windows_command_line(argv: list[str]) -> str:
     return " ".join(parts)
 
 
+def summarize_report(report_dir: Path) -> tuple[bool, str]:
+    """Veredito do index.json do -ReportExportPath (FAutomatedTestPassResults, chaves em camelCase).
+
+    Falha se o relatório faltar, se algum teste falhou/não terminou ou se nenhum teste passou.
+    """
+    index = report_dir / "index.json"
+    try:
+        data = json.loads(index.read_text(encoding="utf-8-sig"))  # gravado com ForceUTF8 (BOM)
+    except FileNotFoundError:
+        return False, f"relatório ausente: {index} (o editor caiu antes de exportar? veja Editor.log)"
+    except (OSError, ValueError) as exc:
+        return False, f"relatório ilegível: {index}: {exc}"
+    tests = data.get("tests") or []
+    by_state: dict[str, list[str]] = {}
+    for test in tests:
+        by_state.setdefault(test.get("state", "NotRun"), []).append(test.get("fullTestPath", "?"))
+    passed = len(by_state.get("Success", []))
+    failed = by_state.get("Fail", [])
+    unfinished = by_state.get("NotRun", []) + by_state.get("InProcess", [])
+    n_failed = max(len(failed), int(data.get("failed") or 0))
+    summary = (
+        f"{passed} ok, {n_failed} falha(s), {len(unfinished)} não terminado(s), "
+        f"{len(by_state.get('Skipped', []))} pulado(s)"
+    )
+    lines = [summary] + [f"  FALHOU: {name}" for name in failed] + [f"  NÃO TERMINOU: {name}" for name in unfinished]
+    if passed == 0 and not n_failed:
+        lines.append("  nenhum teste rodou (filtro sem match ou plugin não carregou)")
+    return passed > 0 and n_failed == 0 and not unfinished, "\n".join(lines)
+
+
+def sdk_missing(logs: list[Path]) -> bool:
+    """O UBT recusou a plataforma por falta de SDK/toolchain (procura nos logs desta execução)."""
+    for log in logs:
+        if log.is_file() and SDK_ERROR in log.read_text(encoding="utf-8", errors="replace"):
+            return True
+    return False
+
+
+def run_step(argv: list[str], platform: str, dry_run: bool, env: dict[str, str] | None = None) -> int:
+    cmd: str | list[str] = windows_command_line(argv) if platform == "Win64" else argv
+    print(cmd if isinstance(cmd, str) else shlex.join(cmd), flush=True)
+    if dry_run:
+        return 0
+    if not Path(argv[0]).is_file():
+        print(f"ue.py: executável ausente: {argv[0]} (engine compilada do fonte?)", file=sys.stderr)
+        return EXIT_NO_ENGINE
+    return subprocess.run(cmd, check=False, env=env).returncode
+
+
+def build_failed(rc: int, platform: str, logs: list[Path]) -> int:
+    if sdk_missing(logs):
+        print(f"ue.py: SDK/toolchain de {platform} não encontrado pelo UBT; {SDK_HINTS[platform]}.", file=sys.stderr)
+    print(f"ue.py: build falhou (exit {rc}); logs: {', '.join(str(p) for p in logs)}", file=sys.stderr)
+    return rc
+
+
 def main(argv: list[str] | None = None) -> int:
     common = argparse.ArgumentParser(add_help=False)
-    common.add_argument("--engine", help="raiz da engine (pasta com Engine/); default: UE_ROOT ou registro")
-    common.add_argument("--dry-run", action="store_true", help="só imprime o comando")
-    common.add_argument("--version", default=ENGINE_VERSION, help=f"versão no registro (default: {ENGINE_VERSION})")
+    common.add_argument(
+        "--engine", help="raiz da engine (pasta com Engine/); default: UE_ROOT, registro ou LauncherInstalled.dat"
+    )
+    common.add_argument("--dry-run", action="store_true", help="só imprime os comandos")
+    common.add_argument(
+        "--version", default=ENGINE_VERSION, help=f"versão no registro/Launcher (default: {ENGINE_VERSION})"
+    )
+    common.add_argument(
+        "--report-dir", default=str(REPORT_DIR), help=f"logs e relatório de automação (default: {REPORT_DIR})"
+    )
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("build-plugin", parents=[common], help="RunUAT BuildPlugin -> dist/CatalogAnchor")
-    sub.add_parser("test", parents=[common], help="testes de automação CatalogAnchor no SampleProject")
+    sub.add_parser("test", parents=[common], help="compila o editor do sample e roda os testes CatalogAnchor")
     args = parser.parse_args(argv)
     make_console_safe()
 
@@ -134,16 +262,30 @@ def main(argv: list[str] | None = None) -> int:
         return EXIT_NO_ENGINE
 
     platform = host_platform()
-    make = build_plugin_command if args.command == "build-plugin" else automation_test_command
-    argv_cmd = make(engine, platform)
-    cmd: str | list[str] = windows_command_line(argv_cmd) if platform == "Win64" else argv_cmd
-    print(cmd if isinstance(cmd, str) else shlex.join(cmd))
+    report_dir = Path(args.report_dir).resolve()
+    if not args.dry_run:
+        report_dir.mkdir(parents=True, exist_ok=True)
+
+    if args.command == "build-plugin":
+        uat_logs = report_dir / "UAT"  # o UAT esvazia essa pasta ao iniciar: não aponte para o report-dir inteiro
+        env = {**os.environ, "uebp_LogFolder": str(uat_logs)}
+        rc = run_step(build_plugin_command(engine, platform), platform, args.dry_run, env)
+        logs = sorted(uat_logs.rglob("*.txt")) if uat_logs.is_dir() else []
+        return build_failed(rc, platform, logs) if rc else 0
+
+    rc = run_step(build_editor_command(engine, platform, report_dir), platform, args.dry_run)
+    if rc:
+        return build_failed(rc, platform, [report_dir / "UBT.log"])
+    if not args.dry_run:
+        (report_dir / "index.json").unlink(missing_ok=True)  # não julgar pelo relatório da execução anterior
+    rc = run_step(automation_test_command(engine, platform, report_dir), platform, args.dry_run)
     if args.dry_run:
         return 0
-    if not Path(argv_cmd[0]).is_file():
-        print(f"ue.py: executável ausente: {argv_cmd[0]} (engine compilada do fonte?)", file=sys.stderr)
-        return EXIT_NO_ENGINE
-    return subprocess.run(cmd, check=False).returncode
+    ok, summary = summarize_report(report_dir)
+    print(f"ue.py: testes de automação: {summary}", file=sys.stdout if ok and not rc else sys.stderr)
+    if rc:
+        return rc  # o editor sai != 0 quando algum teste falha (GIsCriticalError)
+    return 0 if ok else EXIT_TESTS_FAILED
 
 
 if __name__ == "__main__":

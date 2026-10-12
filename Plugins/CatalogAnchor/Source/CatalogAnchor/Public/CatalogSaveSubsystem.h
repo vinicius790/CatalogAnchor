@@ -87,12 +87,16 @@ public:
 
 	/**
 	 * Passa a incluir o objeto nos saves/loads. Ignora quem não implementa ICatalogSaveParticipant.
-	 * Se já há um estado ativo (save/load anterior nesta sessão), entrega-o já via ReadSaveData:
-	 * sem isso, LoadGame no menu + troca de mapa registraria o inventário vazio e o próximo
-	 * autosave gravaria esse vazio por cima do save carregado.
+	 * - Chave única: se outro participante vivo tem a mesma GetSaveRecordKey, o novo o substitui
+	 *   (ex.: respawn com o pawn velho ainda vivo). Cada campo do payload tem um só escritor.
+	 * - Estado ativo (save/load anterior nesta sessão) chega via ReadSaveData uma vez por geração:
+	 *   cada load abre uma geração e entrega a todos os registrados. Objeto novo recebe ao registrar
+	 *   (sem isso, LoadGame no menu + troca de mapa registraria o inventário vazio e o autosave o
+	 *   gravaria). O mesmo objeto desregistrando e registrando de novo na mesma geração não relê.
 	 */
 	void RegisterParticipant(UObject* Participant);
 
+	/** Tira só este objeto: um substituto registrado com a mesma chave continua. */
 	void UnregisterParticipant(UObject* Participant);
 
 	UPROPERTY(BlueprintAssignable, Category = "Catalog|Save")
@@ -119,6 +123,9 @@ private:
 
 	/** Fracos: um participante destruído sem desregistrar só some da lista. */
 	TArray<TWeakObjectPtr<UObject>> Participants;
+
+	/** Objetos que já têm o estado desta geração (leram no load/registro ou registraram antes de haver um). Zera a cada load. */
+	TSet<TWeakObjectPtr<UObject>> ParticipantsInSync;
 
 	/** Último payload salvo ou carregado; base do próximo SaveGame. */
 	FCatalogSavePayload CurrentPayload;

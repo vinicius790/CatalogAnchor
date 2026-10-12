@@ -1,4 +1,4 @@
-# Arquitetura — Catalog Anchor 0.3
+# Arquitetura — Catalog Anchor 0.4
 
 Princípio de todos os sistemas: **o servidor decide, o cliente pede e lê o estado replicado.**
 Nenhum cliente executa gameplay localmente nem escolhe alvo, item ou habilidade por conta própria.
@@ -24,9 +24,14 @@ cliente: BeginInteract() ──ServerBeginInteract──▶ servidor: trace fres
 dono: progresso = f(HoldStartServerTime, GetServerWorldTimeSeconds, HoldDuration)   ← sem float por frame
 ```
 
+- **Mira e alcance:** o trace segue o raio da câmera do controller (`GetPlayerViewPoint`), mas o alcance é
+  medido do pawn: `ComputeTraceSegment` (pura, testada) recorta o raio dentro da esfera de alcance em volta
+  do dono. Câmera em 3ª pessoa não aumenta nem encurta o alcance.
 - `CurrentTarget`, `HoldStartServerTime` e `HoldDuration` replicam com `COND_OwnerOnly`.
 - `TryInteract` recusa alvos com hold, senão um cliente pularia o tempo de segurar.
-- Foco (`OnFocusChanged`) é cosmético e roda só na máquina de quem olha. É desligado pelo que
+- Foco (`OnFocusChanged`) é cosmético e roda só na máquina de quem olha: o controller vem da cadeia de
+  owners (`FindOwningController`: Pawn, o próprio Controller ou o primeiro em `GetOwner()`), e só um
+  `PlayerController` local liga o highlight. É desligado pelo que
   foi anunciado, não pelo controller atual: na morte o pawn perde o controller antes do `EndPlay`.
 - `OnInteractionCompleted` chega ao dono remoto por Client RPC, enviado só quando há conexão
   remota (evita evento duplicado no host de listen server).
@@ -61,8 +66,15 @@ dono: progresso = f(HoldStartServerTime, GetServerWorldTimeSeconds, HoldDuration
 
 - `UCatalogHealthComponent` escuta `AActor::OnTakeAnyDamage`, então qualquer `ApplyDamage` (ex.: Melee
   Sweep) reduz a vida. Dano ≤ 0 ou não finito (NaN/∞) é ignorado; curar só por `Heal`.
+- Ator com `bCanBeDamaged = false` não perde vida por dano. `SetHealth` (ex.: restaurar save) ignora a flag,
+  limita a `[0, MaxHealth]`, ignora valor não finito e revive um morto se o valor for > 0.
 - `Health` replica para todos (barras sobre inimigos). Os eventos disparam no servidor direto e nos
-  clientes pelo `OnRep` (com valor antigo), e `OnDeath` dispara na transição para 0.
+  clientes pelo `OnRep` (com valor antigo). `OnDeath` dispara **uma vez** por transição vivo→morto, mesmo
+  com dano reentrante (listener de `OnDeath` que aplica mais dano não gera segunda morte).
+- Morto não ativa habilidade: `CanActivate` consulta o componente de vida do avatar.
+- **Respawn atrasado:** o cliente só vê o valor replicado; `ResetHealth` no frame da morte funde 0 e
+  `MaxHealth` num envio e o cliente pode nunca ver a morte. O sample espera 2 s (timer limpo no `EndPlay`),
+  com movimento e ações bloqueados, antes de reviver e teleportar.
 - `ComputeNewHealth` é lógica pura testada (clamp e entradas inválidas).
 
 ## Save (schema v2)
@@ -70,7 +82,7 @@ dono: progresso = f(HoldStartServerTime, GetServerWorldTimeSeconds, HoldDuration
 ```
 SaveGame(slot): CurrentPayload + Metadata ─▶ participantes.WriteSaveData ─▶ carimba versão/SaveId/UTC ─▶ .sav
 LoadGame(slot): .sav ─▶ cópia ─▶ CatalogApplySaveMigration (v0→v1→v2) ─▶ participantes.ReadSaveData
-RegisterParticipant (depois de um load): recebe o estado ativo na hora
+RegisterParticipant: recebe o estado ativo uma vez por geração (cada load abre uma)
 ```
 
 - **Regra de delta**: o SaveGame da Unreal omite campos iguais ao default. Por isso
@@ -83,10 +95,20 @@ RegisterParticipant (depois de um load): recebe o estado ativo na hora
 - Nomes de slot: ASCII `[A-Za-z0-9_-]`, 1–128 caracteres, arquivo sempre em minúsculas (FName
   não preserva caixa de forma confiável entre plataformas). Nomes de dispositivo do Windows
   (`CON`, `PRN`, `AUX`, `NUL`, `COM0-9`, `LPT0-9`) são recusados.
-- `RegisterParticipant` só relê o estado ativo para quem **não** estava registrado. Desregistrar e
-  registrar de novo faz o participante receber o último save por cima do estado atual.
+- **Gerações:** cada load bem-sucedido abre uma geração e entrega o payload a todos os registrados. O
+  mesmo objeto desregistrando e registrando de novo na mesma geração **não** relê o save.
+- **Chave única:** registrar outro objeto vivo com a mesma `GetSaveRecordKey` substitui o anterior
+  (respawn com o pawn velho ainda no mundo). `UnregisterParticipant` tira só aquele objeto.
 - `UCatalogGameplaySubsystem` mantém a API da v0.1 (`SaveToSlot`/`LoadFromSlot`, dash stub)
   delegando para o sistema novo.
+
+## Sample
+
+- UI em UMG montada em C++ (`USampleHUDWidget`, `USampleSaveMenuWidget`, sem Widget Blueprint); menu no Tab.
+- `USamplePlayerSaveComponent` grava posição, yaw e vida no registro `SamplePlayer` (v1) do payload.
+- Enhanced Input criado em código; o mapping context sai do LocalPlayer ao trocar de controller e no `EndPlay`.
+- Texto visível em `LOCTEXT` (namespace `SampleCatalog`). Detalhes em
+  [SampleProject/README.md](../SampleProject/README.md).
 
 ## Editor
 

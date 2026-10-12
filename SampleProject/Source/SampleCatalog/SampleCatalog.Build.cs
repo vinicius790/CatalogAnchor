@@ -17,5 +17,13 @@ public class SampleCatalog : ModuleRules
 			"NetCore",
 			"CatalogAnchor",
 		});
+
+		// UI do sample: UMG montado em C++ (sem Widget Blueprint).
+		PrivateDependencyModuleNames.AddRange(new string[]
+		{
+			"UMG",
+			"Slate",
+			"SlateCore",
+		});
 	}
 }

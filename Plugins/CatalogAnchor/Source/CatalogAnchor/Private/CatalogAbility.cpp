@@ -1,6 +1,7 @@
 ﻿// Copyright 2026 Geraliza Castlevania. MIT License.
 #include "CatalogAbility.h"
 #include "CatalogAnchorSettings.h"
+#include "CatalogHealthComponent.h"
 #include "Animation/AnimMontage.h"
 #include "CollisionQueryParams.h"
 #include "CollisionShape.h"
@@ -29,6 +30,12 @@ namespace CatalogAbilityImpl
 bool UCatalogAbility::CanActivate(AActor* Avatar) const
 {
 	if (!IsValid(Avatar))
+	{
+		return false;
+	}
+	// Morto não age até o respawn (ResetHealth). Health replica: o cliente estima igual ao servidor.
+	const UCatalogHealthComponent* Health = Avatar->FindComponentByClass<UCatalogHealthComponent>();
+	if (Health && Health->IsDead())
 	{
 		return false;
 	}
@@ -147,8 +154,9 @@ bool UCatalogAbility_MeleeSweep::Activate(AActor* Avatar)
 	TSet<AActor*> Damaged;
 	for (const FHitResult& Hit : Hits)
 	{
+		// IsValid: um dano anterior desta varredura pode ter destruído o alvo (o hit guarda o ponteiro).
 		AActor* Target = Hit.GetActor();
-		if (!Target || Target == Avatar)
+		if (!IsValid(Target) || Target == Avatar)
 		{
 			continue;
 		}

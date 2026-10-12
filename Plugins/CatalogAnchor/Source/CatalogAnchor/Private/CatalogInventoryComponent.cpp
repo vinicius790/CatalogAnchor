@@ -119,15 +119,15 @@ void UCatalogInventoryComponent::UpdateSaveRegistration()
 		: Cast<AController>(OwnerActor);
 	if (OwnerPawn && !OwnerController)
 	{
-		// Pawn sem controller (ex.: jogador entrou num veículo): mantém o registro; desregistrar e
-		// registrar de novo na volta faria o subsystem reler o save por cima do inventário atual.
+		// Pawn sem controller (veículo, morte antes do respawn): mantém o registro para o save ainda
+		// gravar este inventário. No respawn o pawn novo registra a mesma chave e o substitui.
 		return;
 	}
 	const bool bShouldPersist = OwnerController && OwnerController->IsLocalPlayerController();
 
 	if (bShouldPersist)
 	{
-		SaveSubsystem->RegisterParticipant(this); // AddUnique: repetir não duplica nem relê o save
+		SaveSubsystem->RegisterParticipant(this); // repetir não duplica nem relê o save (mesma geração)
 	}
 	else
 	{
@@ -143,7 +143,7 @@ void UCatalogInventoryComponent::EndPlay(const EEndPlayReason::Type EndPlayReaso
 	}
 	if (UCatalogSaveSubsystem* SaveSubsystem = CatalogInventoryPrivate::FindSaveSubsystem(this))
 	{
-		SaveSubsystem->UnregisterParticipant(this);
+		SaveSubsystem->UnregisterParticipant(this); // só este: o pawn do respawn, se já o substituiu, continua
 	}
 	Super::EndPlay(EndPlayReason);
 }

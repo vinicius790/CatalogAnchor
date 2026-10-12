@@ -2,13 +2,13 @@
 #include "SampleItemCatalog.h"
 #include "CatalogItemDefinition.h"
 
-#define LOCTEXT_NAMESPACE "SampleItemCatalog"
+#define LOCTEXT_NAMESPACE "SampleCatalog"
 
 USampleItemCatalog::USampleItemCatalog()
 {
-	GemItem = CreateItem(TEXT("Item_Gem"), LOCTEXT("Gem", "Gema"), 20);
-	PotionItem = CreateItem(TEXT("Item_Potion"), LOCTEXT("Potion", "Poção"), 5);
-	KeyItem = CreateItem(TEXT("Item_Key"), LOCTEXT("Key", "Chave"), 1);
+	GemItem = CreateItem(TEXT("Item_Gem"), LOCTEXT("Item.Gem", "Gema"), 20);
+	PotionItem = CreateItem(TEXT("Item_Potion"), LOCTEXT("Item.Potion", "Poção"), 5);
+	KeyItem = CreateItem(TEXT("Item_Key"), LOCTEXT("Item.Key", "Chave"), 1);
 }
 
 UCatalogItemDefinition* USampleItemCatalog::CreateItem(FName ItemId, const FText& DisplayName, int32 MaxStackSize)

@@ -10,7 +10,7 @@
 #include "Net/UnrealNetwork.h"
 #include "UObject/ConstructorHelpers.h"
 
-#define LOCTEXT_NAMESPACE "SampleChestActor"
+#define LOCTEXT_NAMESPACE "SampleCatalog"
 
 ASampleChestActor::ASampleChestActor()
 {
@@ -61,14 +61,14 @@ FText ASampleChestActor::GetInteractionPrompt_Implementation() const
 {
 	if (bOpened)
 	{
-		return LOCTEXT("Empty", "Baú vazio");
+		return LOCTEXT("Chest.Empty", "Baú vazio");
 	}
 	// O prompt não recebe instigador: vale o jogador local (é quem lê a UI; o inventário dele replica para ele).
 	if (!HasKey(UGameplayStatics::GetPlayerPawn(this, 0)))
 	{
-		return FText::Format(LOCTEXT("Locked", "Trancado (precisa de {0})"), RequiredKey->DisplayName);
+		return FText::Format(LOCTEXT("Chest.Locked", "Trancado (precisa de {0})"), RequiredKey->DisplayName);
 	}
-	return LOCTEXT("Open", "Abrir baú");
+	return LOCTEXT("Chest.Open", "Abrir baú");
 }
 
 bool ASampleChestActor::OnInteract_Implementation(AActor* InstigatorActor)

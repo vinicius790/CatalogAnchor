@@ -1,8 +1,9 @@
 # Instalação
 
 **Engine:** Unreal Engine **5.8** ou mais nova (5.9, 6.0: compatibilidade pretendida, ainda não verificada) +
-Visual Studio com o workload *Game development with C++* na versão que as release notes da engine pedem
-(Windows), ou o toolchain equivalente no Linux/macOS.
+Visual Studio 2022 17.14 (MSVC 14.44) ou 2026 (MSVC 14.50) com o workload *Game development with C++* e
+Windows SDK ≥ 10.0.19041 (Windows), ou o toolchain equivalente no Linux/macOS (não verificado). Sem eles o
+UBT falha com "Platform Win64 is not a valid platform to build".
 
 ## Caminho A — usar o plugin no seu projeto
 
@@ -29,8 +30,9 @@ Visual Studio com o workload *Game development with C++* na versão que as relea
 
 ## Compilar e testar sem abrir o Editor
 
-`tools/ue.py` acha a engine por `--engine`, pela variável `UE_ROOT` ou pelo registro do Windows
-(chave da 5.8; para outra versão instalada, `--version 5.9`).
+`tools/ue.py` acha a engine por `--engine`, pela variável `UE_ROOT`, pelo registro do Windows ou, por
+último, pelo `%ProgramData%\Epic\UnrealEngineLauncher\LauncherInstalled.dat` (entrada `UE_5.8`; para outra
+versão instalada, `--version 5.9`). A primeira fonte informada decide: um `--engine` errado não cai nas outras.
 
 ```bash
 py -3 tools/ue.py build-plugin
@@ -42,8 +44,9 @@ Roda `RunUAT BuildPlugin` e compila Runtime + Editor num projeto temporário; a 
 py -3 tools/ue.py test
 ```
 
-Roda os 18 testes de automação `CatalogAnchor.*` no SampleProject (`-nullrhi`). Compile o
-`SampleCatalogEditor` antes (Caminho B): com `-unattended` o editor não se oferece para compilar módulos ausentes.
+Compila o `SampleCatalogEditor` e roda os 33 testes de automação `CatalogAnchor.*` no editor headless
+(`-nullrhi`). Logs e relatório (`index.json`) vão para `--report-dir` (default `Saved/Reports`); sai ≠ 0 se
+algum teste falhar ou se nenhum teste rodar.
 
 Use `--dry-run` para ver o comando sem executar.
 
@@ -51,9 +54,10 @@ Use `--dry-run` para ver o comando sem executar.
 
 - [ ] Output Log: `LogCatalogAnchor: CatalogAnchor Runtime online`
 - [ ] Project Settings → Plugins → **Catalog Anchor** mostra Interaction / Save / Inventory / Ability
-- [ ] Session Frontend → Automation → `CatalogAnchor` → 18 testes verdes
+- [ ] Session Frontend → Automation → `CatalogAnchor` → 33 testes verdes (com o PIE parado)
 - [ ] Sample: pegar pickups, abrir o baú segurando E, pegar a chave e abrir o baú trancado
-- [ ] Sample: F5 → fechar o PIE → Play → F9 restaura o inventário
+- [ ] Sample: F5 → fechar o PIE → Play → F9 restaura inventário, posição e vida
+- [ ] Sample: Tab abre o menu de saves (salvar/carregar/apagar com metadados)
 - [ ] Sample em **2 jogadores (Listen Server)**: o cliente vê pickups/baús, coleta e segura E
 - [ ] Data Asset `CatalogItemDefinition` sem DisplayName → **Validate** falha com mensagem clara
 - [ ] **Tools → Catalog Anchor → Validate Catalog Assets** mostra o resumo
@@ -63,7 +67,8 @@ Use `--dry-run` para ver o comando sem executar.
 | Ação | CI (GitHub Actions) | Sua máquina com UE 5.8+ |
 |---|---|---|
 | Manifestos, dependências, lint de C++ | ✅ `tools/validate_plugin.py` | ✅ |
-| pytest + ruff do tooling | ✅ | ✅ |
-| Compilar C++ (UBT) | ❌ sem engine | ✅ `tools/ue.py build-plugin` |
-| Testes de automação / PIE | ❌ | ✅ `tools/ue.py test` |
+| pytest (Python 3.10–3.14, JUnit) + ruff do tooling | ✅ `ci.yml` | ✅ |
+| Compilar C++ (UBT) | ❌ sem engine (✅ `ue.yml` em runner self-hosted) | ✅ `tools/ue.py build-plugin` |
+| Testes de automação | ❌ (✅ `ue.yml` em runner self-hosted) | ✅ `tools/ue.py test` |
+| PIE / multiplayer | ❌ | roteiro em [MULTIPLAYER_TESTS.md](MULTIPLAYER_TESTS.md) |
 | Medir FPS | ❌ nunca inventamos números | seu profiler |

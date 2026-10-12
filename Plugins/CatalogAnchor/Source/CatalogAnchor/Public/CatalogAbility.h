@@ -30,7 +30,7 @@ class CATALOGANCHOR_API UCatalogAbility : public UObject
 	GENERATED_BODY()
 
 public:
-	/** Avatar válido e K2_CanActivate concorda. Overrides: checagens nativas e depois Super. */
+	/** Avatar válido, não morto (UCatalogHealthComponent, se houver) e K2_CanActivate concorda. Overrides: checagens nativas e depois Super. */
 	virtual bool CanActivate(AActor* Avatar) const;
 
 	/** Exige autoridade. Base: dispara K2_OnActivated e devolve true. Overrides: efeito e depois Super. */

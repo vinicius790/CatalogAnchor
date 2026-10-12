@@ -4,7 +4,7 @@
 #include "CatalogAbilityDefinition.h"
 #include "CatalogGameplayTags.h"
 
-#define LOCTEXT_NAMESPACE "SampleAbilityCatalog"
+#define LOCTEXT_NAMESPACE "SampleCatalog"
 
 USampleAbilityCatalog::USampleAbilityCatalog()
 {
@@ -13,7 +13,7 @@ USampleAbilityCatalog::USampleAbilityCatalog()
 
 	DashAbility = CreateDefaultSubobject<UCatalogAbilityDefinition>(TEXT("Ability_Dash"));
 	DashAbility->AbilityTag = CatalogGameplayTags::Ability_Dash;
-	DashAbility->DisplayName = LOCTEXT("Dash", "Dash");
+	DashAbility->DisplayName = LOCTEXT("Ability.Dash", "Dash");
 	DashAbility->CooldownSeconds = 1.2f;
 	DashAbility->Behavior = DashBehavior;
 
@@ -24,7 +24,7 @@ USampleAbilityCatalog::USampleAbilityCatalog()
 
 	MeleeAbility = CreateDefaultSubobject<UCatalogAbilityDefinition>(TEXT("Ability_Melee"));
 	MeleeAbility->AbilityTag = CatalogGameplayTags::Ability_Melee;
-	MeleeAbility->DisplayName = LOCTEXT("Melee", "Golpe");
+	MeleeAbility->DisplayName = LOCTEXT("Ability.Melee", "Golpe");
 	MeleeAbility->CooldownSeconds = 0.6f;
 	MeleeAbility->Behavior = MeleeBehavior;
 }

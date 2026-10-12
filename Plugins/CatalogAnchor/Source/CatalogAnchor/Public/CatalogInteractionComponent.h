@@ -7,6 +7,7 @@
 #include "CatalogInteractionComponent.generated.h"
 
 class AActor;
+class AController;
 struct FHitResult;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FCatalogInteractionTargetChanged, AActor*, NewTarget);
@@ -34,7 +35,10 @@ public:
 
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
-	/** Distância máxima do trace a partir do ponto de visão do owner (padrão: Project Settings). */
+	/**
+	 * Alcance (cm), medido a partir do pawn controlado; a mira sai da câmera (GetPlayerViewPoint).
+	 * Sem pawn, medido do ponto de visão (ou do próprio dono sem controller). Padrão: Project Settings.
+	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Catalog|Interaction", meta = (ClampMin = "10.0"))
 	float TraceDistance;
 
@@ -105,6 +109,20 @@ public:
 	 * tempo inválido ou Now < StartTime = 0, para nunca completar por acidente.
 	 */
 	static float ComputeHoldProgress(double StartTime, double Now, float Duration);
+
+	/**
+	 * Controller de quem olha pelo dono: o do Pawn (nulo sem possessão), o próprio Controller ou o
+	 * primeiro na cadeia de GetOwner() (PlayerState, ator com SetOwner(PlayerController)).
+	 */
+	static AController* FindOwningController(AActor* Owner);
+
+	/**
+	 * Segmento do trace (pura, testável). Mira pelo raio da câmera, alcance medido de ReachOrigin:
+	 * começa no ponto do raio mais próximo de ReachOrigin (ou na câmera, se já passou dele) e termina
+	 * onde o raio sai da esfera de raio Reach. false = a mira não passa ao alcance (ou entrada inválida).
+	 */
+	static bool ComputeTraceSegment(const FVector& ViewLocation, const FVector& ViewDirection,
+		const FVector& ReachOrigin, float Reach, FVector& OutStart, FVector& OutEnd);
 
 protected:
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;

@@ -110,6 +110,7 @@ void UCatalogSaveSubsystem::Deinitialize()
 	}
 	// Callback async que chegar depois disto não acha participantes; só libera o slot e dispara os eventos.
 	Participants.Reset();
+	ParticipantsInSync.Reset();
 	BusySlots.Reset();
 	Super::Deinitialize();
 }
@@ -270,7 +271,7 @@ bool UCatalogSaveSubsystem::DoesSlotExist(FName SlotName) const
 
 void UCatalogSaveSubsystem::RegisterParticipant(UObject* Participant)
 {
-	const ICatalogSaveParticipant* AsParticipant = Cast<ICatalogSaveParticipant>(Participant);
+	ICatalogSaveParticipant* AsParticipant = Cast<ICatalogSaveParticipant>(Participant);
 	if (!AsParticipant)
 	{
 		UE_LOG(LogCatalogAnchor, Warning, TEXT("RegisterParticipant: '%s' não implementa ICatalogSaveParticipant; ignorado."),
@@ -278,26 +279,43 @@ void UCatalogSaveSubsystem::RegisterParticipant(UObject* Participant)
 		return;
 	}
 
-	// Mesma chave = os dois escrevem o mesmo lugar e o último vence (ex.: dois inventários num listen server).
+	// Uma chave, um dono: o novo substitui o antigo (respawn: o pawn velho ainda vive, sem controller).
+	// Sem isso os dois gravariam o mesmo campo e a ordem de registro decidiria quem vence.
 	const FName Key = AsParticipant->GetSaveRecordKey();
-	for (const ICatalogSaveParticipant* Other : GetLiveParticipants())
+	Participants.RemoveAll([Participant, &Key](const TWeakObjectPtr<UObject>& Weak)
 	{
-		if (Other != AsParticipant && Other->GetSaveRecordKey() == Key)
+		UObject* Other = Weak.Get();
+		const ICatalogSaveParticipant* OtherParticipant = Cast<ICatalogSaveParticipant>(Other);
+		if (!OtherParticipant)
 		{
-			UE_LOG(LogCatalogAnchor, Warning, TEXT("RegisterParticipant: chave '%s' de '%s' já está em uso; o último a escrever vence."),
-				*Key.ToString(), *GetNameSafe(Participant));
-			break;
+			return true; // destruído
 		}
-	}
-
-	const int32 PreviousNum = Participants.Num();
+		if (Other == Participant || OtherParticipant->GetSaveRecordKey() != Key)
+		{
+			return false;
+		}
+		UE_LOG(LogCatalogAnchor, Verbose, TEXT("RegisterParticipant: '%s' substitui '%s' na chave '%s'."),
+			*GetNameSafe(Participant), *GetNameSafe(Other), *Key.ToString());
+		return true;
+	});
 	Participants.AddUnique(TWeakObjectPtr<UObject>(Participant));
 	UE_LOG(LogCatalogAnchor, Verbose, TEXT("RegisterParticipant: '%s' (chave '%s')."), *GetNameSafe(Participant), *Key.ToString());
 
-	// Participante que chega depois do load (troca de mapa, respawn) recebe o estado ativo, uma vez.
-	if (bHasActivePayload && Participants.Num() > PreviousNum)
+	for (auto It = ParticipantsInSync.CreateIterator(); It; ++It)
 	{
-		Cast<ICatalogSaveParticipant>(Participant)->ReadSaveData(CurrentPayload);
+		if (!It->IsValid())
+		{
+			It.RemoveCurrent(); // objeto destruído: a entrada não acumula
+		}
+	}
+
+	// Estado ativo chega uma vez por geração: quem chega depois do load (troca de mapa, respawn) recebe;
+	// o mesmo objeto registrando de novo não, senão o save velho cairia por cima do estado atual.
+	bool bAlreadyInSync = false;
+	ParticipantsInSync.Add(TWeakObjectPtr<UObject>(Participant), &bAlreadyInSync);
+	if (bHasActivePayload && !bAlreadyInSync)
+	{
+		AsParticipant->ReadSaveData(CurrentPayload);
 	}
 }
 
@@ -366,7 +384,15 @@ void UCatalogSaveSubsystem::AdoptPayload(const FCatalogSavePayload& Payload)
 void UCatalogSaveSubsystem::ApplyLoadedPayload(const FCatalogSavePayload& Payload)
 {
 	AdoptPayload(Payload);
-	for (ICatalogSaveParticipant* AsParticipant : GetLiveParticipants())
+	// Load abre geração nova: os registrados recebem agora; os ausentes, ao registrar de novo.
+	// Save não abre: o payload saiu dos próprios participantes, não há nada novo para eles.
+	const TArray<ICatalogSaveParticipant*> Live = GetLiveParticipants();
+	ParticipantsInSync.Reset();
+	for (const TWeakObjectPtr<UObject>& Weak : Participants)
+	{
+		ParticipantsInSync.Add(Weak);
+	}
+	for (ICatalogSaveParticipant* AsParticipant : Live)
 	{
 		AsParticipant->ReadSaveData(Payload);
 	}

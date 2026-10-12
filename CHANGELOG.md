@@ -4,6 +4,35 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) · versões
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-10-12
+
+### Adicionado
+- **Vida:** `SetHealth` (restaurar save; limita, ignora não finito, revive com valor > 0).
+- **Save:** gerações de load: cada load entrega o payload a todos os registrados, e o mesmo objeto
+  re-registrando na mesma geração não relê. Registrar outro objeto com a mesma chave o substitui (respawn).
+- **Sample:** HUD e menu de saves (Tab) em UMG feitos em C++; `USamplePlayerSaveComponent` grava posição,
+  yaw e vida (registro `SamplePlayer` v1); todo texto em `LOCTEXT` (namespace `SampleCatalog`).
+- **Testes de automação de mundo** (vida, interação, save, save do sample): 33 testes C++ no total.
+- **CI:** pytest em Python 3.10–3.14 com relatório JUnit; workflow `ue.yml` para runner self-hosted
+  (variáveis `UE_RUNNER_ENABLED`, `UE_ROOT`) que compila e roda a automação.
+- `tools/ue.py`: `--report-dir` (logs de UAT/UBT/editor e `index.json`), sai ≠ 0 com teste falho ou zero testes,
+  aponta o SDK que falta quando o UBT recusa a plataforma, e acha a engine no `LauncherInstalled.dat`
+  do Epic Launcher depois de `--engine`/`UE_ROOT`/registro.
+
+### Alterado
+- **Interação:** mira pelo ponto de vista do controller (`GetPlayerViewPoint`) com alcance medido do pawn
+  (`ComputeTraceSegment`); o foco resolve o controller pela cadeia de owners (`FindOwningController`) e só
+  liga para `PlayerController` local.
+- **Vida:** respeita `bCanBeDamaged`; `OnDeath` uma vez por morte mesmo com dano reentrante.
+- **Habilidades:** avatar morto não ativa habilidade.
+- **Sample:** respawn do jogador atrasado 2 s (timer, limpo no `EndPlay`), sem movimento nem ações enquanto
+  morto; o Enhanced Input remove o mapping context ao trocar de controller e no `EndPlay`.
+- `CatalogAnchor.uplugin`: `VersionName` 0.4.0.
+
+### Corrigido
+- Sample: clientes podiam nunca ver a morte do jogador (`ResetHealth` no mesmo frame fundia 0 e 100 no OnRep).
+- Melee Sweep ignora alvo destruído por um dano anterior da mesma varredura.
+
 ## [0.3.0] — 2026-10-11
 
 ### Adicionado

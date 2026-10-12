@@ -23,12 +23,18 @@ class CATALOGANCHOR_API ICatalogSaveParticipant
 	GENERATED_BODY()
 
 public:
-	/** Chave estável (ex.: "Inventory"); vira FCatalogSaveRecord::Key se você usar Records. Não mude entre versões. */
+	/**
+	 * Chave estável (ex.: "Inventory"); vira FCatalogSaveRecord::Key se você usar Records. Não mude entre versões.
+	 * Única entre os registrados: registrar outro objeto com a mesma chave tira este do save.
+	 */
 	virtual FName GetSaveRecordKey() const = 0;
 
 	/** Chamado na autoridade antes de gravar: escreva seu estado no Payload (campos próprios ou um Record). */
 	virtual void WriteSaveData(FCatalogSavePayload& Payload) const = 0;
 
-	/** Chamado após um load bem-sucedido; Payload já está migrado para GCatalogSaveSchemaVersion. */
+	/**
+	 * Chamado após um load bem-sucedido e ao registrar um objeto que ainda não tem o estado ativo
+	 * (uma vez por load); Payload já está migrado para GCatalogSaveSchemaVersion.
+	 */
 	virtual void ReadSaveData(const FCatalogSavePayload& Payload) = 0;
 };

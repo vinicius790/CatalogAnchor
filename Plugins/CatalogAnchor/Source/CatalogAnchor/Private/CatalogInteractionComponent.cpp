@@ -21,12 +21,13 @@ namespace CatalogInteractionPrivate
 		return !FMath::IsNaN(Duration) && Duration > 0.f;
 	}
 
-	/** Jogador humano nesta máquina (standalone, host listen ou cliente dono). AI e pawn sem controller ficam de fora. */
-	static bool IsOwnedByLocalPlayer(const AActor* Owner)
+	/**
+	 * Jogador humano nesta máquina (standalone, host listen ou cliente dono) controla o dono, seja ele
+	 * Pawn, Controller, PlayerState ou ator com SetOwner(PC). AI e pawn sem controller ficam de fora.
+	 */
+	static bool IsOwnedByLocalPlayer(AActor* Owner)
 	{
-		const APawn* Pawn = Cast<APawn>(Owner);
-		const AController* Controller = Pawn ? Pawn->GetController() : Cast<AController>(Owner);
-		const APlayerController* PlayerController = Cast<APlayerController>(Controller);
+		const APlayerController* PlayerController = Cast<APlayerController>(UCatalogInteractionComponent::FindOwningController(Owner));
 		return PlayerController && PlayerController->IsLocalController();
 	}
 }
@@ -95,32 +96,94 @@ double UCatalogInteractionComponent::GetServerTimeSeconds() const
 	return GameStateBase ? GameStateBase->GetServerWorldTimeSeconds() : World->GetTimeSeconds();
 }
 
+AController* UCatalogInteractionComponent::FindOwningController(AActor* Owner)
+{
+	// SetOwner recusa ciclos, então a cadeia termina.
+	for (AActor* It = Owner; It; It = It->GetOwner())
+	{
+		if (const APawn* Pawn = Cast<APawn>(It))
+		{
+			// Pawn decide pelo controller atual: sem possessão (morte, veículo) ninguém olha por ele.
+			return Pawn->GetController();
+		}
+		if (AController* Controller = Cast<AController>(It))
+		{
+			return Controller;
+		}
+	}
+	return nullptr;
+}
+
+bool UCatalogInteractionComponent::ComputeTraceSegment(const FVector& ViewLocation, const FVector& ViewDirection,
+	const FVector& ReachOrigin, float Reach, FVector& OutStart, FVector& OutEnd)
+{
+	const FVector Direction = ViewDirection.GetSafeNormal();
+	if (Direction.IsZero() || FMath::IsNaN(Reach) || Reach <= 0.f
+		|| ViewLocation.ContainsNaN() || ReachOrigin.ContainsNaN())
+	{
+		return false;
+	}
+
+	// Raio View + t*Direction contra a esfera (ReachOrigin, Reach): t^2 + 2Bt + C = 0.
+	const FVector ToView = ViewLocation - ReachOrigin;
+	const double B = FVector::DotProduct(ToView, Direction);
+	const double C = ToView.SizeSquared() - static_cast<double>(Reach) * Reach;
+	const double Discriminant = B * B - C;
+	if (Discriminant < 0.0)
+	{
+		return false;
+	}
+
+	// Começa no ponto mais próximo de ReachOrigin: o que está entre a câmera e o pawn não vira alvo.
+	const double StartT = FMath::Max(0.0, -B);
+	const double EndT = -B + FMath::Sqrt(Discriminant);
+	if (EndT <= StartT)
+	{
+		return false;
+	}
+	OutStart = ViewLocation + Direction * StartT;
+	OutEnd = ViewLocation + Direction * EndT;
+	return true;
+}
+
 bool UCatalogInteractionComponent::PerformTrace(FHitResult& OutHit) const
 {
-	const AActor* Owner = GetOwner();
+	AActor* Owner = GetOwner();
 	const UWorld* World = GetWorld();
 	if (!Owner || !World)
 	{
 		return false;
 	}
 
-	FVector Start = Owner->GetActorLocation();
-	FVector Direction = Owner->GetActorForwardVector();
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(CatalogInteractTrace), false, Owner);
 
-	if (const APawn* Pawn = Cast<APawn>(Owner))
+	// Sem controller (ator solto, pawn sem possessão): mira e alcance saem do próprio dono.
+	FVector ViewLocation = Owner->GetActorLocation();
+	FRotator ViewRotation = Owner->GetActorRotation();
+	FVector ReachOrigin = ViewLocation;
+	if (const AController* Controller = FindOwningController(Owner))
 	{
-		if (const AController* Ctrl = Pawn->GetController())
+		// Mira pela câmera; alcance a partir do pawn, para a câmera de 3ª pessoa não estender nem
+		// inverter o alcance. No servidor isso usa o pawn autoritativo: é a revalidação.
+		Controller->GetPlayerViewPoint(ViewLocation, ViewRotation);
+		ReachOrigin = ViewLocation;
+		if (const APawn* Pawn = Controller->GetPawn<APawn>())
 		{
-			FRotator ViewRot;
-			FVector ViewLoc;
-			Ctrl->GetPlayerViewPoint(ViewLoc, ViewRot);
-			Start = ViewLoc;
-			Direction = ViewRot.Vector();
+			ReachOrigin = Pawn->GetPawnViewLocation();
+			// Dono Controller/PlayerState: o pawn não é o ignorado padrão e a mira sairia da cápsula.
+			if (Pawn != Owner)
+			{
+				Params.AddIgnoredActor(Pawn);
+			}
 		}
 	}
 
-	const FVector End = Start + Direction * TraceDistance;
-	FCollisionQueryParams Params(SCENE_QUERY_STAT(CatalogInteractTrace), false, Owner);
+	FVector Start;
+	FVector End;
+	if (!ComputeTraceSegment(ViewLocation, ViewRotation.Vector(), ReachOrigin, TraceDistance, Start, End))
+	{
+		return false;
+	}
 
 	if (TraceRadius > UE_KINDA_SMALL_NUMBER)
 	{

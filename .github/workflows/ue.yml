@@ -1,0 +1,46 @@
+# Build real do C++ (UBT/UAT) + testes de automação CatalogAnchor no editor headless.
+# Precisa de runner self-hosted com UE 5.8, Visual Studio 2022 17.14+ (MSVC 14.44) ou 2026 (14.50),
+# Windows SDK >= 10.0.19041 e Python 3.10+ (launcher "py"). Labels: self-hosted, windows, ue-5.8.
+# Só roda com a variável de repositório UE_RUNNER_ENABLED=true (ou disparo manual), para não ficar
+# na fila em forks/repos sem esse runner. Variável opcional UE_ROOT: raiz da engine (default: registro ou LauncherInstalled.dat).
+name: UE
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ue-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    # PR de fork nunca roda no runner self-hosted (código de terceiros na máquina com a engine).
+    if: >-
+      (vars.UE_RUNNER_ENABLED == 'true' || github.event_name == 'workflow_dispatch') &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: [self-hosted, windows, ue-5.8]
+    timeout-minutes: 120
+    env:
+      UE_ROOT: ${{ vars.UE_ROOT }}
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONIOENCODING: utf-8
+      REPORTS: ${{ github.workspace }}/ue-reports
+    steps:
+      - uses: actions/checkout@v5
+      - name: BuildPlugin (RunUAT)
+        run: py -3 tools/ue.py build-plugin --report-dir "${{ env.REPORTS }}/build-plugin"
+      - name: Build SampleCatalogEditor + testes de automação
+        run: py -3 tools/ue.py test --report-dir "${{ env.REPORTS }}/test"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ue-reports
+          # UAT/*.txt (BuildPlugin + UBT), UBT.log, Editor.log, index.json/index.html (-ReportExportPath)
+          path: ${{ env.REPORTS }}
+          if-no-files-found: warn

@@ -1,4 +1,4 @@
-# Tecnologias — Catalog Anchor 0.3
+# Tecnologias — Catalog Anchor 0.4
 
 | Tecnologia | Uso |
 |---|---|
@@ -12,9 +12,10 @@
 | DeveloperSettings | Project Settings do plugin |
 | DataValidation + ToolMenus + Asset Registry | validadores e menu do Editor |
 | Enhanced Input (só no sample) | ações e mapping context criados em código |
-| Automation Framework | 18 testes C++ de lógica pura |
+| UMG (só no sample) | HUD e menu de saves montados em C++ (`WidgetTree->ConstructWidget`) |
+| Automation Framework | 33 testes C++: lógica pura e mundo (`UWorld` próprio: vida, interação, save) |
 | Python ≥ 3.10, pytest, ruff | validador, lint de C++, `tools/ue.py`, testes do tooling |
-| GitHub Actions | ruff + validador + pytest (Ubuntu/Windows, Python 3.10–3.13) |
+| GitHub Actions | `ci.yml`: ruff + validador + pytest com JUnit (Ubuntu/Windows, Python 3.10–3.14); `ue.yml`: build + automação em runner self-hosted |
 
 ## Decisões
 
@@ -32,3 +33,16 @@
 - **BOM UTF-8 nos fontes com acento:** sem ele, o MSVC lê o arquivo na codepage do Windows.
 - **Validador Python no CI:** os runners públicos não têm Unreal. O lint pega erros de convenção
   que quebrariam o UHT/UBT (ex.: `.generated.h` fora do lugar, falta de `_API`).
+
+## APIs conferidas no header da UE 5.8.3
+
+Sem compilador nesta máquina, as assinaturas de maior risco foram lidas nos headers instalados:
+
+| API | Header (5.8.3) |
+|---|---|
+| `FValidateAssetsSettings`: construtor e destrutor com `UE_API` | `EditorValidatorSubsystem.h:155-156` |
+| UHT gera o stub de `_Implementation` em interface | `CurveSourceInterface.generated.h:35-37` |
+| `PlayAnimMontage(Montage, InPlayRate = 1.f, StartSectionName = NAME_None)` | `Character.h:890` |
+| `AddMappingContext(..., Options = FModifyContextOptions())` | `EnhancedInputSubsystemInterface.h:265` |
+| `RemovePIEPrefix(Source, OutPIEInstanceID = nullptr)` | `World.h:4456` |
+| `FPawnControllerChangedSignature(APawn*, AController*, AController*)` | `Pawn.h:33` |

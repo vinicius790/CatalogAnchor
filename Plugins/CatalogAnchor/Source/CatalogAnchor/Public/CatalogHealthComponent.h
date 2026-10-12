@@ -13,8 +13,11 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FCatalogDeath, AActor*, Killer);
 
 /**
  * Vida replicada do dono. Escuta AActor::OnTakeAnyDamage, então qualquer UGameplayStatics::ApplyDamage
- * (ex.: UCatalogAbility_MeleeSweep) a reduz. O servidor decide; Health replica para todos (barra
- * sobre inimigos), e OnHealthChanged/OnDeath disparam no servidor e nos clientes.
+ * (ex.: UCatalogAbility_MeleeSweep) a reduz; ator com bCanBeDamaged = false não perde vida.
+ * O servidor decide; Health replica para todos (barra sobre inimigos), e OnHealthChanged/OnDeath
+ * disparam no servidor e nos clientes. OnDeath: uma vez por transição vivo→morto (ResetHealth revive).
+ * Cliente vê só o valor replicado: dano e respawn no mesmo envio (ex.: ResetHealth dentro de OnDeath)
+ * se fundem, e o cliente pode não receber OnDeath.
  */
 UCLASS(ClassGroup = (Catalog), meta = (BlueprintSpawnableComponent))
 class CATALOGANCHOR_API UCatalogHealthComponent : public UActorComponent
@@ -46,6 +49,14 @@ public:
 	/** Cura (só autoridade; mortos não curam). Devolve quanto curou de fato. */
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Catalog|Health")
 	float Heal(float Amount);
+
+	/**
+	 * Define a vida direto (ex.: restaurar um save). Só autoridade. Limita a [0, MaxHealth]; valor não
+	 * finito é ignorado; não depende de bCanBeDamaged. Eventos com a mesma regra do dano (OnDeath ao
+	 * chegar a 0); valor > 0 num morto o revive, como ResetHealth.
+	 */
+	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Catalog|Health")
+	void SetHealth(float NewHealth);
 
 	/** Volta a MaxHealth (respawn). Só autoridade. */
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category = "Catalog|Health")

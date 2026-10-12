@@ -57,7 +57,8 @@ void UCatalogHealthComponent::HandleTakeAnyDamage(AActor* DamagedActor, float Da
 	AController* InstigatedBy, AActor* DamageCauser)
 {
 	// Dano negativo não cura por aqui (use Heal): evita "dano" vindo de fora virar cura.
-	if (IsDead() || !FMath::IsFinite(Damage) || Damage <= 0.f)
+	// AActor::TakeDamage não checa bCanBeDamaged (só APawn checa): respeitamos aqui para todo ator.
+	if (IsDead() || !FMath::IsFinite(Damage) || Damage <= 0.f || (DamagedActor && !DamagedActor->CanBeDamaged()))
 	{
 		return;
 	}
@@ -74,6 +75,17 @@ float UCatalogHealthComponent::Heal(float Amount)
 	const float OldHealth = Health;
 	SetHealthWithAuthority(ComputeNewHealth(Health, Amount, MaxHealth), nullptr);
 	return Health - OldHealth;
+}
+
+void UCatalogHealthComponent::SetHealth(float NewHealth)
+{
+	const AActor* Owner = GetOwner();
+	if (!Owner || !Owner->HasAuthority() || !FMath::IsFinite(NewHealth))
+	{
+		return;
+	}
+	// Via ComputeNewHealth: clamp e MaxHealth inválido (mantém a vida atual) com a mesma regra do dano.
+	SetHealthWithAuthority(ComputeNewHealth(Health, NewHealth - Health, MaxHealth), nullptr);
 }
 
 void UCatalogHealthComponent::ResetHealth()
@@ -104,8 +116,12 @@ void UCatalogHealthComponent::OnRep_Health(float OldHealth)
 
 void UCatalogHealthComponent::BroadcastChange(float OldHealth, AActor* Causer)
 {
-	OnHealthChanged.Broadcast(Health, Health - OldHealth);
-	if (OldHealth > 0.f && Health <= 0.f)
+	// Captura antes de notificar: um ouvinte pode causar dano/cura reentrante e mudar Health,
+	// e a morte seria detectada de novo aqui (OnDeath duplo) ou com o valor errado.
+	const float NewHealth = Health;
+	const bool bDied = OldHealth > 0.f && NewHealth <= 0.f;
+	OnHealthChanged.Broadcast(NewHealth, NewHealth - OldHealth);
+	if (bDied)
 	{
 		UE_LOG(LogCatalogAnchor, Verbose, TEXT("%s morreu (causador: %s)."), *GetNameSafe(GetOwner()), *GetNameSafe(Causer));
 		OnDeath.Broadcast(Causer);
