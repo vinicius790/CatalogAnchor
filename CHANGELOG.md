@@ -4,6 +4,36 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) · versões
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-10-13
+
+### Adicionado
+- **Verificação real (Windows, UE 5.8.3, MSVC 14.44, Windows SDK 22621):** build do `SampleCatalogEditor` OK e
+  **64/64 testes de automação** passando no `UnrealEditor-Cmd`; pytest com 118 casos (Python 3.13 e 3.14).
+- **Inventário:** `UseItem` / `ServerUseItem` (RPC validado) e `OnItemUsed`; `UCatalogItemDefinition::bUsable`,
+  `bConsumeOnUse` e `OnUsed(User)`; `TransferTo` atômico entre inventários; `MaxWeight` / `Weight`
+  (`GetTotalWeight`, `GetAddableQuantity`); `Category` e `GetItemsByTag`.
+- **Save:** `PayloadCrc` (CRC32 do payload) conferido no load, com fallback para o backup (`<slot>_bak`,
+  `_bak2`...; `BackupCount` nas Settings); nomes `_bak` reservados; `ListSaveSlots` / `FCatalogSaveSlotInfo`
+  / `ECatalogSaveSlotState`; `DeleteSlot` apaga também os backups; `UCatalogBlueprintLibrary`; comandos de console
+  `catalog.Save.List`, `catalog.Save.Now`, `catalog.Save.Load` e `catalog.Save.Delete`.
+- **Interação:** `ICatalogInteractable::GetInteractionPriority`, assist de esfera (`bUseSphereAssist`,
+  `AssistRadius`), `OnInteractionFailed(ECatalogInteractionFailReason)`, CVar `catalog.Interaction.Debug` e
+  `TraceChannel` configurável. A mira pela câmera e o alcance do pawn já vinham da 0.4.0.
+- **Editor:** validadores de nome de asset duplicado, ícone/mesh nulos e cooldown; factories na categoria
+  "Catalog Anchor"; menu **Report Catalog Assets**.
+- **RPCs:** todo Server RPC é `WithValidation`; o validador Python reprova a falta (`--no-strict-rpc` vira aviso).
+- **Repo:** `release.yml` (release por tag `v*`), templates de issue/PR, Dependabot, `CODEOWNERS`, `SECURITY.md`,
+  `CODE_OF_CONDUCT.md`, `tools/get_msvc.py` (+ `UE_SDKS_ROOT`) e CI de pytest em Python 3.10–3.14.
+- `validate_plugin.py --strict-docs`: contagens de testes citadas nos docs que divergem do código viram erro.
+
+### Alterado
+- `CatalogAnchor.uplugin`: `VersionName` 0.5.0 (`Version` 5).
+
+### Corrigido
+- **Vida:** a primeira replicação no cliente não gera mais `OnHealthChanged` falso (delta contra o default 100).
+- **Habilidades:** `TryActivateAbility` com tag inválida não envia RPC (`OnAbilityFailed`); avatar morto não ativa.
+- **Melee Sweep** ignora alvo destruído por um dano anterior da mesma varredura.
+
 ## [0.4.0] — 2026-10-12
 
 ### Adicionado

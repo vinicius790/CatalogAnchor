@@ -111,6 +111,18 @@ void UCatalogHealthComponent::SetHealthWithAuthority(float NewHealth, AActor* Ca
 
 void UCatalogHealthComponent::OnRep_Health(float OldHealth)
 {
+	if (!bReceivedFirstHealth)
+	{
+		// OldHealth é só o default da classe (≠ MaxHealth se customizado): delta falso. Anuncia o valor
+		// atual sem delta; morto na entrada ainda avisa OnDeath (esconder boneco morto de quem chega depois).
+		bReceivedFirstHealth = true;
+		BroadcastChange(Health, nullptr);
+		if (IsDead())
+		{
+			OnDeath.Broadcast(nullptr);
+		}
+		return;
+	}
 	BroadcastChange(OldHealth, nullptr);
 }
 

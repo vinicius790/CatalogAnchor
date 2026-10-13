@@ -1,4 +1,4 @@
-# Tecnologias — Catalog Anchor 0.4
+# Tecnologias — Catalog Anchor 0.5
 
 | Tecnologia | Uso |
 |---|---|
@@ -8,14 +8,16 @@
 | Replicação: `FFastArraySerializer`, `COND_OwnerOnly`, Server/Client/Multicast RPC | inventário, interação, habilidades |
 | Gameplay Tags nativas (`FNativeGameplayTag`) | identidade das habilidades sem asset de tags |
 | Asset Manager / Primary Data Assets | `UCatalogItemDefinition`, `UCatalogAbilityDefinition` |
-| USaveGame + `UGameplayStatics` (sync e async) | persistência com schema versionado |
+| USaveGame + `UGameplayStatics` (sync e async) | persistência com schema versionado, CRC32 do payload e backups |
+| Console (`catalog.Save.*`, CVar `catalog.Interaction.Debug`) | diagnóstico em PIE |
+| `UBlueprintFunctionLibrary` | `UCatalogBlueprintLibrary`: save, vida e inventário para Blueprint |
 | DeveloperSettings | Project Settings do plugin |
-| DataValidation + ToolMenus + Asset Registry | validadores e menu do Editor |
+| DataValidation + ToolMenus + Asset Registry + `UFactory` | validadores, factories e menu do Editor |
 | Enhanced Input (só no sample) | ações e mapping context criados em código |
 | UMG (só no sample) | HUD e menu de saves montados em C++ (`WidgetTree->ConstructWidget`) |
-| Automation Framework | 33 testes C++: lógica pura e mundo (`UWorld` próprio: vida, interação, save) |
-| Python ≥ 3.10, pytest, ruff | validador, lint de C++, `tools/ue.py`, testes do tooling |
-| GitHub Actions | `ci.yml`: ruff + validador + pytest com JUnit (Ubuntu/Windows, Python 3.10–3.14); `ue.yml`: build + automação em runner self-hosted |
+| Automation Framework | 64 testes C++: lógica pura e mundo (`UWorld` próprio: vida, interação, inventário, save), todos passando na 5.8.3 |
+| Python ≥ 3.10, pytest, ruff | validador, lint de C++, `tools/ue.py`, `tools/get_msvc.py`, testes do tooling |
+| GitHub Actions | `ci.yml`: ruff + validador + pytest com JUnit (Ubuntu/Windows, Python 3.10–3.14); `ue.yml`: build + automação em runner self-hosted; `release.yml`: release por tag `v*`; Dependabot |
 
 ## Decisões
 

@@ -1,5 +1,5 @@
-// Copyright 2026 Geraliza Castlevania. MIT License.
-// UBT module rules — Editor only (Data Validation + menu Tools → Catalog Anchor).
+﻿// Copyright 2026 Geraliza Castlevania. MIT License.
+// UBT module rules — Editor only (Data Validation, factories do Content Browser + menu Tools → Catalog Anchor).
 
 using UnrealBuildTool;
 
@@ -19,6 +19,7 @@ public class CatalogAnchorEditor : ModuleRules
 			"UnrealEd",
 			"ToolMenus",
 			"AssetRegistry",
+			"AssetDefinition",
 			"GameplayTags",
 			"DataValidation",
 			"EditorSubsystem",

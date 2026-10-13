@@ -18,7 +18,7 @@ class UCatalogInteractable : public UInterface
  * Implemente em atores estáticos / pickups; UCatalogInteractionComponent faz o trace no servidor.
  * Chame sempre via ICatalogInteractable::Execute_* (funciona para implementações C++ e Blueprint).
  * Sem override, o UHT devolve os defaults do tipo: prompt vazio, false, duração 0 (instantâneo),
- * não bloqueado, foco sem efeito.
+ * prioridade 0, não bloqueado, foco sem efeito.
  */
 class CATALOGANCHOR_API ICatalogInteractable
 {
@@ -43,6 +43,14 @@ public:
 	 */
 	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "Catalog|Interaction")
 	bool IsInteractionBlocked(AActor* InstigatorActor) const;
+
+	/**
+	 * Desempate entre candidatos do assist esférico do UCatalogInteractionComponent (bUseSphereAssist):
+	 * maior vence; empate vai para o mais perto do centro da mira. Padrão 0. Só o servidor lê.
+	 * Alvo que o trace de mira acerta direto não passa por aqui.
+	 */
+	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "Catalog|Interaction")
+	int32 GetInteractionPriority() const;
 
 	/** Hook cosmético (highlight/outline). Só roda na máquina do jogador que olha; nunca mude estado de jogo aqui. */
 	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "Catalog|Interaction")

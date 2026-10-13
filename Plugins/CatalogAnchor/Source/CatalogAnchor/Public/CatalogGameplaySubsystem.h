@@ -41,7 +41,7 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Catalog|Save")
 	bool LoadFromSlot(FName SlotName, FCatalogSavePayload& OutPayload);
 
-	/** = UCatalogSaveSubsystem::IsValidSlotName (ASCII [A-Za-z0-9_-], 1..128, sem diferenciar maiúsculas, sem CON/NUL/COM1...). */
+	/** = UCatalogSaveSubsystem::IsValidSlotName (ASCII [A-Za-z0-9_-], 1..128, sem diferenciar maiúsculas, sem CON/NUL/COM1... nem sufixo _bak). */
 	UFUNCTION(BlueprintPure, Category = "Catalog|Save")
 	static bool IsValidSlotName(FName SlotName);
 

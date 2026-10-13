@@ -79,3 +79,28 @@ int32 FCatalogInventoryRules::RemoveFromStacks(TArray<int32>& InOutStacks, int32
 
 	return Quantity - Remaining;
 }
+
+int32 FCatalogInventoryRules::MaxQuantityByWeight(float CurrentWeight, float MaxWeight, float UnitWeight, int32 Quantity)
+{
+	if (Quantity <= 0)
+	{
+		return 0;
+	}
+	if (MaxWeight <= 0.f || UnitWeight <= 0.f)
+	{
+		return Quantity;
+	}
+
+	const double Fit = (static_cast<double>(MaxWeight) - CurrentWeight) / UnitWeight;
+	if (!(Fit > 0.0)) // também pega NaN
+	{
+		return 0;
+	}
+	// Tolerância: 100 x 0.1f não pode virar 99 por erro de ponto flutuante.
+	return static_cast<int32>(FMath::Min<double>(Quantity, FMath::FloorToDouble(Fit + 1e-4)));
+}
+
+bool FCatalogInventoryRules::CanUse(bool bUsable, int32 Owned, int32 Quantity)
+{
+	return bUsable && Quantity >= 1 && Quantity <= MaxUseQuantity && Owned >= Quantity;
+}

@@ -1,0 +1,31 @@
+name: Sugerir funcionalidade
+description: Proponha algo novo ou uma mudança de comportamento.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problema
+      description: O que você não consegue fazer hoje, e em que situação.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposta
+      description: Como o plugin deveria se comportar (API, componente, configuração).
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternativas consideradas
+      description: Contorno atual ou outras abordagens.
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Escopo
+      options:
+        - label: Li o `LIMITATIONS.md` e isto não é uma limitação já documentada.
+          required: true
+        - label: Posso ajudar a implementar ou testar.

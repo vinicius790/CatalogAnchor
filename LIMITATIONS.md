@@ -3,27 +3,32 @@
 ## Estado real da verificação
 
 - **Compilado e testado (Windows, UE 5.8.3, MSVC 14.44.35229, Windows SDK 22621):** `SampleCatalogEditor`
-  (plugin Runtime + Editor + sample) compila sem erros e os **33 testes de automação** passam no
-  `UnrealEditor-Cmd` (exit code 0, `index.json`: 33 Success / 0 Fail). A toolchain veio de `tools/get_msvc.py`
-  (pacotes oficiais, sem Visual Studio) via `UE_SDKS_ROOT`; o repo foi compilado a partir de um caminho ASCII.
-- Os "Condition failed" no startup do editor (14 linhas) vêm do MetaSound da engine, não do projeto.
+  (plugin Runtime + Editor + sample) compila sem erros e os **64 testes de automação** passam no
+  `UnrealEditor-Cmd`. A toolchain veio de `tools/get_msvc.py` (pacotes oficiais, sem Visual Studio) via
+  `UE_SDKS_ROOT`; o repo foi compilado a partir de um caminho ASCII. pytest: 118 casos (Python 3.13 e 3.14).
+- Os 14 "Condition failed" no startup do editor vêm da engine 5.8.3 (provado num projeto vazio), não do plugin.
 - O CI público não tem engine; o workflow `ue.yml` (runner self-hosted) ainda não rodou num runner real.
-- **Testes de rede MP-01..MP-07** ([docs/MULTIPLAYER_TESTS.md](docs/MULTIPLAYER_TESTS.md)) não executados.
+- **Multiplayer:** o status real dos testes de rede está em [docs/MULTIPLAYER_TESTS.md](docs/MULTIPLAYER_TESTS.md);
+  este arquivo não afirma resultado de MP. Os testes de automação usam um `UWorld` próprio, sem conexão de rede.
+- **Foco/highlight real** só é verificável no PIE (precisa de `PlayerController` local com câmera): a automação
+  cobre o trace (`ComputeTraceSegment`, `FindOwningController`), não o highlight na tela.
 - As assinaturas de API mais arriscadas foram conferidas lendo os headers da 5.8.3
-  ([docs/TECNOLOGIAS.md](docs/TECNOLOGIAS.md)); isso não substitui compilar.
+  ([docs/TECNOLOGIAS.md](docs/TECNOLOGIAS.md)).
 - **Mac e Linux** não verificados (nem o tooling de build `tools/ue.py` nessas plataformas com engine real).
 - Compatibilidade com 5.9 e 6.0 é intenção (`.uplugin` sem `EngineVersion`), não fato.
 
-## Riscos conhecidos (a confirmar ao compilar/rodar)
+## Riscos conhecidos
 
-- **OnRep inicial com `MaxHealth` ≠ 100:** o cliente parte do default 100 e o primeiro `OnRep_Health`
-  dispara um `OnHealthChanged` espúrio (sem dano real).
+- **`_Validate` e RPCs sem teste de rede:** todo Server RPC tem `WithValidation`, mas a validação e o caminho
+  cliente→servidor não são exercitados por nenhum teste automatizado (só lógica e mundo local).
+- **Assist de esfera de interação** (`bUseSphereAssist`) para no primeiro oclusor: um interagível atrás de outro
+  objeto no mesmo raio não é candidato.
 - **Testes de mundo que usam GameInstance** (save) não devem rodar com uma sessão PIE aberta: podem pegar
   o GameInstance/subsystem errado. Rode-os com o PIE parado ou via `tools/ue.py test`.
-- **Foco/highlight real** depende de `PlayerController` local com câmera: só é verificável no PIE; os testes
-  de mundo cobrem o trace (`ComputeTraceSegment`, `FindOwningController`), não o highlight na tela.
-- **Menu de saves do sample** lista slots extras do disco só onde a plataforma implementa
-  `ISaveGameSystem::GetSaveGameNames`; nas outras aparecem só `Quick` e `Slot1..3`.
+- **Lista de saves** depende de `ISaveGameSystem::GetSaveGameNames`; onde a plataforma não implementa, `ListSaveSlots`
+  e o menu do sample mostram só o que o subsystem gravou/leu na sessão (mais o slot de autosave).
+- **Backup de save** guarda só as últimas `BackupCount` versões (padrão 1) e só de arquivo que estava íntegro; um
+  slot sem CRC (gravado antes da 0.5) carrega sem conferência de integridade.
 - **Cooldown persiste após o respawn** no mesmo pawn (intencional: o componente não é recriado).
 
 ## Não entregue / não inventado
@@ -41,10 +46,10 @@
 | Save **só no host** | o subsystem vive no GameInstance de quem tem autoridade. Servidor dedicado precisa de persistência própria |
 | Cosmético de habilidade por multicast **unreliable** | um cliente pode perder uma montage ocasionalmente |
 | Sem predição de cliente nas habilidades | o dash é aplicado no servidor e corrigido no cliente. Predição é trabalho do GAS |
-| `Capacity` do inventário não replica | mudar em runtime não atualiza a UI do cliente |
+| `Capacity` e `MaxWeight` do inventário não replicam | mudar em runtime não atualiza a UI do cliente |
+| `TransferTo` sem RPC | só roda com autoridade nos dois inventários; um cliente que queira transferir precisa de um RPC seu |
 | Highlight de foco só liga Custom Depth | o contorno visual exige um material de pós-processo (asset) |
 | Respawn no mesmo frame da morte | o cliente pode não ver a morte (OnRep coalesce); atrase o `ResetHealth`, como o sample (2 s) |
-| Sem `ListSlots` no plugin | enumeração depende da plataforma; o sample usa `GetSaveGameNames` direto |
 
 ## Versão completa (fora do escopo)
 

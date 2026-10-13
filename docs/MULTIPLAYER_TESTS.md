@@ -5,12 +5,14 @@ Cada item tem passos, o resultado esperado (tirado do código atual) e um status
 Os testes automáticos (`CatalogAnchor.*`) cobrem a lógica sem rede; este roteiro cobre o que só
 aparece com servidor e clientes separados.
 
-> **Status geral: pendente (sem compilador nesta máquina).** Nada abaixo foi executado ainda.
-> Ao rodar, troque o `status` de cada item por `ok` ou `falhou (<o que apareceu>)`.
+> **Status geral (2026-10-13): parcial.** Executado de verdade, headless (`-nullrhi`, sem teclado nem mouse):
+> servidor dedicado + 2 clientes e listen server + 1 cliente, com `catalog.Debug.Dump` (ver 2.0). Esse comando
+> prova conexão, spawn, replicação de vida e o registro de participantes do save. Tudo que depende de input
+> (segurar E, golpe, Shift, F5/F9) está marcado `bloqueado` com o motivo. UE 5.8.3, Win64 Development Editor.
 
 ## 0. Preparação
 
-1. Compile o editor do sample (Development Editor, Win64): `py -3 tools/ue.py test` (compila e roda os testes) ou o fluxo de
+1. Compile o editor do sample (Development Editor, Win64; sem Visual Studio: `UE_SDKS_ROOT`, ver `tools/get_msvc.py`): `py -3 tools/ue.py test` (compila e roda os testes) ou o fluxo de
    [INSTALACAO.md](INSTALACAO.md).
 2. Variáveis usadas abaixo (PowerShell):
 
@@ -67,6 +69,33 @@ Flags conferidas no código da engine 5.8: no binário de editor, `-server` liga
 
 ## 2. Casos
 
+### 2.0 Evidência headless: `catalog.Debug.Dump`
+
+Comando de diagnóstico do plugin (não-Shipping): `catalog.Debug.Dump` loga em `LogCatalogAnchor` uma linha por ator com
+vida/inventário que **aquela máquina** enxerga e, no fim, `SaveParticipants=<n>`. Com `N T` repete N vezes a cada T s
+(útil em `-ExecCmds`, sem input). Execução usada (cópia ASCII do repo; `UE_SDKS_ROOT` definido; `-Multiprocess` evita
+bloquear no Turnkey/UBT):
+
+```powershell
+$UE = "C:\Program Files\Epic Games\UE_5.8\Engine\Binaries\Win64\UnrealEditor-Cmd.exe"
+$A  = "-log -nullrhi -unattended -nosplash -NoSound -nopause -Multiprocess"
+Start-Process $UE "$PROJ /Engine/Maps/Entry -server $A -ExecCmds=`"catalog.Debug.Dump 10 6`" -abslog=srv.log"
+Start-Process $UE "$PROJ 127.0.0.1 -game $A -ExecCmds=`"catalog.Debug.Dump 10 6`" -abslog=cli1.log"   # e cli2.log
+```
+
+Observado (linhas `[Dump]` dos logs):
+
+| Máquina | NetMode | Pawns vistos (vida) | Pawn local | `SaveParticipants` |
+| --- | --- | --- | --- | --- |
+| Dedicado | DedicatedServer | 2 (100/100 cada) + 2 bonecos (75/75) | nenhum (`Locally=0`) | **0** |
+| Cliente 1 e 2 (dedicado) | Client | os mesmos 2 pawns e 2 bonecos, todos replicados | exatamente 1 (`Locally=1`) | 0 |
+| Listen (host) | ListenServer | 2 pawns + 2 bonecos | pawn do host (`Locally=1`) | **2** (inventário + `USamplePlayerSaveComponent` do host) |
+| Cliente (listen) | Client | 2 pawns + 2 bonecos | exatamente 1 | 0 |
+
+Limite: o headless não tem input, então os inventários ficam vazios (`Items=0`) e nenhuma vida muda. Python
+(`-ExecutePythonScript`/`EditorLevelLibrary.get_game_world`) não serve em `-game`/`-server`: o primeiro é recusado fora do editor
+("cannot be used outside of the editor") e o segundo derruba o processo (access violation em EditorScriptingUtilities).
+
 ### MP-01 Replicação do inventário (COND_OwnerOnly)
 
 Modos: 1A e 1B.
@@ -82,7 +111,7 @@ Esperado:
 - **G** no cliente 2 solta 1 unidade (`ServerDropItem`): um pickup aparece para todos e a pilha
   diminui só no HUD do dono.
 
-status: pendente (sem compilador nesta máquina)
+status: executado/parcial. Verificado via Dump: dedicado + 2 clientes conectam, cada cliente enxerga os 2 pawns e só 1 é local; inventários vazios nos 3 processos no spawn. NÃO verificado: pegar a esfera e o `COND_OwnerOnly` do conteúdo, soltar com **G** (bloqueado: exige segurar E / tecla; `BeginInteract` não é chamável por console).
 
 ### MP-02 Registro de participantes do save
 
@@ -101,7 +130,7 @@ Esperado:
   `AutosaveIntervalSeconds > 0` (Project Settings → Catalog Anchor; padrão 0 = desligado), o log
   do servidor mostra `Autosave pulado: nenhum participante registrado.` e nenhum `.sav` é criado.
 
-status: pendente (sem compilador nesta máquina)
+status: executado/ok para o registro. Dedicado: `SaveParticipants=0` (nenhum jogador local, bate com o esperado). Listen: host `SaveParticipants=2` (inventário + `SamplePlayerSaveComponent`), cliente remoto `SaveParticipants=0`. NÃO verificado: F5/F9, arquivo `Quick.sav`, mensagem "Save/load só no host" e o log de autosave (bloqueado: teclas; `catalog.Save.Now` existe mas não foi rodado).
 
 ### MP-03 Foco de interação
 
@@ -117,7 +146,7 @@ Esperado:
 - No dedicado (1B) nenhum foco é anunciado no servidor (não há jogador local lá).
 - Ao pegar o pickup, o foco some na hora para quem mirava (alvo destruído).
 
-status: pendente (sem compilador nesta máquina)
+status: bloqueado: exige mira com câmera e interação (input). Só o pré-requisito foi visto: em cada cliente exatamente 1 pawn tem `Locally=1`; no dedicado nenhum (não há jogador local).
 
 ### MP-04 Interação com hold (baú, 1,5 s)
 
@@ -135,7 +164,7 @@ Esperado:
 - (2) e (3) O hold é cancelado (`EndInteract` / alvo mudou) e nada é coletado.
 - (4) Sem a chave: prompt "Trancado", hold não começa. Com a chave: abre normalmente.
 
-status: pendente (sem compilador nesta máquina)
+status: bloqueado: hold de 1,5 s no baú exige segurar E com mira; sem input no headless e sem comando de console para `BeginInteract`.
 
 ### MP-05 Vida, morte e respawn
 
@@ -156,7 +185,7 @@ Esperado:
   falha com `CannotActivate`).
 - No dedicado (1B) o comportamento é o mesmo; nada depende de controller local no servidor.
 
-status: pendente (sem compilador nesta máquina)
+status: executado/parcial. Vida inicial replica certo: pawns 100/100 e bonecos 75/75 idênticos no servidor e nos clientes (dedicado e listen). NÃO verificado: dano, morte única, respawn (bloqueado: o golpe é input; não há comando de dano).
 
 ### MP-06 Habilidades e cooldown
 
@@ -173,7 +202,7 @@ Esperado:
 - A montagem/efeito do golpe aparece nas outras janelas (multicast não confiável: perda ocasional
   sob perda de pacote é esperada).
 
-status: pendente (sem compilador nesta máquina)
+status: bloqueado: Shift/clique são input; sem comando de console para ativar habilidade.
 
 ### MP-07 Persistência (save/load)
 
@@ -189,7 +218,7 @@ Esperado:
 - O cliente 2 mantém o próprio inventário; o save do host não o altera.
 - O arquivo `SampleProject/Saved/SaveGames/Quick.sav` tem data de modificação do passo 1.
 
-status: pendente (sem compilador nesta máquina)
+status: bloqueado: F5/F9 são input e o fluxo pede reiniciar o PIE; `catalog.Save.Now/Load` existem mas não foram executados nesta rodada (sem estado a salvar sem input).
 
 ## 3. Testes automáticos de mundo relacionados
 
@@ -199,4 +228,4 @@ Rodam sem rede, num `UWorld` próprio (Session Frontend → Automation, filtro `
 `.DestroyedDuringCallback`, `.RespectsCanBeDamaged`, `.SetHealth` e
 `CatalogAnchor.Abilities.DeadAvatarCannotActivate`.
 
-status: pendente (sem compilador nesta máquina)
+status: executado: testes automáticos de mundo rodaram via `py -3 tools/ue.py test`: 33 ok, 0 falhas, exit 0 (build + editor headless); lista completa em Saved/Reports/index.json.

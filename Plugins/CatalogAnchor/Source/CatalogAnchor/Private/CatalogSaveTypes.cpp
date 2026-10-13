@@ -1,9 +1,52 @@
 ﻿// Copyright 2026 Geraliza Castlevania. MIT License.
 #include "CatalogSaveTypes.h"
 #include "CatalogAnchor.h"
+#include "Misc/Crc.h"
 
 namespace CatalogSaveTypesPrivate
 {
+	// Acumula só bytes canônicos: nada que dependa do processo (FName vira texto em minúsculas)
+	// nem da omissão de defaults no disco (-0.0 vira 0.0, NaN vira um NaN só).
+	struct FCrcAccumulator
+	{
+		uint32 Crc = 0;
+
+		void Raw(const void* Data, int32 Num)
+		{
+			Crc = FCrc::MemCrc32(Data, Num, Crc);
+		}
+
+		void Int(int64 Value)
+		{
+			Raw(&Value, sizeof(Value));
+		}
+
+		void Real(double Value)
+		{
+			if (FMath::IsNaN(Value))
+			{
+				Int(0x7FF8DEADBEEFLL); // um marcador só, qualquer que seja o padrão de bits do NaN
+				return;
+			}
+			if (Value == 0.0)
+			{
+				Value = 0.0; // descarta o sinal de -0.0
+			}
+			Raw(&Value, sizeof(Value));
+		}
+
+		void Str(const FString& Value)
+		{
+			Int(Value.Len());
+			Raw(*Value, Value.Len() * sizeof(TCHAR));
+		}
+
+		void Name(FName Value)
+		{
+			Str(Value.ToString().ToLower());
+		}
+	};
+
 	/**
 	 * v1 → v2. Metadata e Records nasceram na v2: um arquivo v1 não tem esses campos e eles
 	 * chegam com default ("desconhecido") — não há de onde deduzir mapa ou tempo de jogo.
@@ -66,6 +109,46 @@ bool CatalogApplySaveMigration(FCatalogSavePayload& InOutPayload)
 		InOutPayload.Header.Timestamp = FDateTime::UtcNow();
 	}
 	return true;
+}
+
+uint32 CatalogComputePayloadCrc(const FCatalogSavePayload& Payload)
+{
+	CatalogSaveTypesPrivate::FCrcAccumulator Acc;
+
+	const FCatalogSaveHeader& Header = Payload.Header;
+	Acc.Int(Header.SaveVersion);
+	Acc.Int(Header.SaveId.A);
+	Acc.Int(Header.SaveId.B);
+	Acc.Int(Header.SaveId.C);
+	Acc.Int(Header.SaveId.D);
+	Acc.Int(Header.Timestamp.GetTicks());
+
+	Acc.Int(Payload.Inventory.Num());
+	for (const FCatalogInventorySlot& InventorySlot : Payload.Inventory)
+	{
+		Acc.Name(InventorySlot.ItemId);
+		Acc.Int(InventorySlot.Quantity);
+	}
+
+	Acc.Real(Payload.PlayerLocation.X);
+	Acc.Real(Payload.PlayerLocation.Y);
+	Acc.Real(Payload.PlayerLocation.Z);
+	Acc.Real(Payload.PlayerYaw);
+
+	Acc.Str(Payload.Metadata.MapName);
+	Acc.Real(Payload.Metadata.PlaytimeSeconds);
+	Acc.Str(Payload.Metadata.DisplayName);
+
+	Acc.Int(Payload.Records.Num());
+	for (const FCatalogSaveRecord& Record : Payload.Records)
+	{
+		Acc.Name(Record.Key);
+		Acc.Int(Record.Version);
+		Acc.Int(Record.Data.Num());
+		Acc.Raw(Record.Data.GetData(), Record.Data.Num());
+	}
+
+	return Acc.Crc != 0 ? Acc.Crc : 1;
 }
 
 FCatalogSaveRecord* CatalogFindSaveRecord(FCatalogSavePayload& Payload, FName Key)

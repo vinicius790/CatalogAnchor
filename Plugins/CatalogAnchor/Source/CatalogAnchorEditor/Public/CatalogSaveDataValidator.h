@@ -2,9 +2,11 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "CatalogDefinitionValidators.h"
 #include "EditorValidatorBase.h"
 #include "CatalogSaveDataValidator.generated.h"
 
+class UCatalogSaveTemplate;
 struct FCatalogSavePayload;
 
 /**
@@ -25,6 +27,9 @@ class CATALOGANCHOREDITOR_API UCatalogSaveDataValidator : public UEditorValidato
 public:
 	/** Erros do payload, um texto por problema (vazio = válido). Separado do UObject para ser testável. */
 	static TArray<FText> GetPayloadErrors(const FCatalogSavePayload& Payload);
+
+	/** GetPayloadErrors + aviso de convenção de nome; usado pelo validador e pelo relatório do menu. */
+	static FCatalogValidationIssues GetIssues(const UCatalogSaveTemplate& Template);
 
 protected:
 	virtual bool CanValidateAsset_Implementation(const FAssetData& InAssetData, UObject* InObject,

@@ -19,6 +19,11 @@
  * "ausente/desconhecido", porque é isso que um arquivo antigo vai ler; (2) nunca mude o
  * default de um campo existente — arquivos já gravados omitiram o valor antigo e passariam
  * a ler o novo em silêncio.
+ *
+ * Integridade: o envelope (UCatalogSaveGame) guarda o CRC32 do payload (CatalogComputePayloadCrc).
+ * Campo novo em qualquer struct do payload: inclua-o no CRC (CatalogSaveTypes.cpp); o teste
+ * CatalogAnchor.Save.PayloadCrcCoversEveryField falha até você atualizá-lo. O envelope é aditivo:
+ * o CRC não muda o layout do payload nem o schema.
  */
 static constexpr int32 GCatalogSaveSchemaVersion = 2;
 
@@ -133,6 +138,60 @@ struct CATALOGANCHOR_API FCatalogSavePayload
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Catalog|Save")
 	TArray<FCatalogSaveRecord> Records;
 };
+
+/** Estado de um slot em UCatalogSaveSubsystem::ListSaveSlots. */
+UENUM(BlueprintType)
+enum class ECatalogSaveSlotState : uint8
+{
+	/** Arquivo legível e íntegro. */
+	Ok,
+	/** O arquivo do slot estava corrompido; os dados vieram de um backup. */
+	Recovered,
+	/** Nem o arquivo nem os backups puderam ser lidos (corrompido, ou schema mais novo que o plugin). */
+	Unreadable,
+	/** Gravação/leitura assíncrona em andamento: o arquivo não foi aberto. */
+	Busy,
+};
+
+/** Resumo leve de um slot (menu de saves): sem inventário nem registros. */
+USTRUCT(BlueprintType)
+struct CATALOGANCHOR_API FCatalogSaveSlotInfo
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly, Category = "Catalog|Save")
+	FName SlotName = NAME_None;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Catalog|Save")
+	ECatalogSaveSlotState State = ECatalogSaveSlotState::Unreadable;
+
+	/** Schema do arquivo antes da migração (0 = sem o campo/legado). Só vale com State Ok ou Recovered. */
+	UPROPERTY(BlueprintReadOnly, Category = "Catalog|Save")
+	int32 SaveVersion = 0;
+
+	/** Horário UTC da gravação. */
+	UPROPERTY(BlueprintReadOnly, Category = "Catalog|Save")
+	FDateTime Timestamp;
+
+	/** Mapa ativo ao salvar. Vazio = desconhecido. */
+	UPROPERTY(BlueprintReadOnly, Category = "Catalog|Save")
+	FString MapName;
+
+	/** Tempo de jogo acumulado (s). */
+	UPROPERTY(BlueprintReadOnly, Category = "Catalog|Save")
+	double PlaytimeSeconds = 0.0;
+
+	/** Nome mostrado ao jogador; vazio = use SlotName. */
+	UPROPERTY(BlueprintReadOnly, Category = "Catalog|Save")
+	FString DisplayName;
+};
+
+/**
+ * CRC32 canônico do payload, o que o UCatalogSaveSubsystem grava no envelope e confere no load.
+ * Independe do processo (FName comparado em minúsculas, -0.0 igual a 0.0) e nunca devolve 0
+ * (0 no arquivo = gravado antes do CRC existir, sem conferência).
+ */
+CATALOGANCHOR_API uint32 CatalogComputePayloadCrc(const FCatalogSavePayload& Payload);
 
 /**
  * Migra in-place dados LIDOS DE DISCO até GCatalogSaveSchemaVersion.

@@ -53,7 +53,9 @@ marcador do alvo e barras de vida sobre os bonecos.
 
 Os dois participam só na autoridade e só para o pawn do PlayerController local. A morte do sample
 trava o personagem por 2 s (vida 0 replica e os clientes veem a morte) e depois o
-teleporta ao centro com vida cheia (mesmo pawn): o próximo save grava esse estado. Se um
+teleporta ao centro com vida cheia (mesmo pawn): o próximo save grava esse estado. Morto, o personagem não
+anda, pula, interage, golpeia, dá dash, solta item nem usa poção, também no cliente remoto (a vida replicada
+bloqueia o input local; o servidor revalida). Olhar em volta continua livre. Se um
 jogo trocar isso por um pawn novo, o subsystem entrega o save ativo ao novo participante, que volta à
 última posição salva.
 

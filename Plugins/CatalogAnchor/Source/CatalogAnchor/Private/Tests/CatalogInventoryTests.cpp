@@ -1,6 +1,7 @@
 ﻿// Copyright 2026 Geraliza Castlevania. MIT License.
 #include "CatalogInventoryTypes.h"
 #include "Misc/AutomationTest.h"
+#include <limits>
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -96,6 +97,38 @@ bool FCatalogInventoryRemoveTest::RunTest(const FString& Parameters)
 
 	TestEqual(TEXT("pedido maior que o estoque devolve só o que havia"), FCatalogInventoryRules::RemoveFromStacks(Stacks, 20), 8);
 	TestTrue(TEXT("tudo zerado"), Stacks == TArray<int32>{ 0, 0 });
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCatalogInventoryWeightLimitTest, "CatalogAnchor.Inventory.WeightLimit", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::CommandletContext | EAutomationTestFlags::ProductFilter)
+
+bool FCatalogInventoryWeightLimitTest::RunTest(const FString& Parameters)
+{
+	TestEqual(TEXT("MaxWeight 0 = ilimitado"), FCatalogInventoryRules::MaxQuantityByWeight(50.f, 0.f, 2.f, 7), 7);
+	TestEqual(TEXT("Item sem peso = ilimitado"), FCatalogInventoryRules::MaxQuantityByWeight(10.f, 10.f, 0.f, 7), 7);
+	TestEqual(TEXT("Cabe só parte"), FCatalogInventoryRules::MaxQuantityByWeight(4.f, 10.f, 2.f, 7), 3);
+	TestEqual(TEXT("Cabe tudo"), FCatalogInventoryRules::MaxQuantityByWeight(0.f, 10.f, 2.f, 3), 3);
+	TestEqual(TEXT("Exatamente cheio"), FCatalogInventoryRules::MaxQuantityByWeight(10.f, 10.f, 2.f, 3), 0);
+	TestEqual(TEXT("Acima do máximo"), FCatalogInventoryRules::MaxQuantityByWeight(12.f, 10.f, 2.f, 3), 0);
+	TestEqual(TEXT("Fração de unidade não entra"), FCatalogInventoryRules::MaxQuantityByWeight(0.f, 10.f, 3.f, 5), 3);
+	TestEqual(TEXT("100 x 0.1 cabe em 10 (ponto flutuante)"), FCatalogInventoryRules::MaxQuantityByWeight(0.f, 10.f, 0.1f, 100), 100);
+	TestEqual(TEXT("Quantity 0"), FCatalogInventoryRules::MaxQuantityByWeight(0.f, 10.f, 2.f, 0), 0);
+	TestEqual(TEXT("Peso atual NaN não entra nada"), FCatalogInventoryRules::MaxQuantityByWeight(std::numeric_limits<float>::quiet_NaN(), 10.f, 2.f, 3), 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCatalogInventoryCanUseTest, "CatalogAnchor.Inventory.CanUse", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::CommandletContext | EAutomationTestFlags::ProductFilter)
+
+bool FCatalogInventoryCanUseTest::RunTest(const FString& Parameters)
+{
+	const int32 Cap = FCatalogInventoryRules::MaxUseQuantity;
+	TestTrue(TEXT("Usável e presente"), FCatalogInventoryRules::CanUse(true, 3, 2));
+	TestFalse(TEXT("Não usável"), FCatalogInventoryRules::CanUse(false, 3, 1));
+	TestFalse(TEXT("Falta quantidade"), FCatalogInventoryRules::CanUse(true, 1, 2));
+	TestFalse(TEXT("Quantity 0"), FCatalogInventoryRules::CanUse(true, 3, 0));
+	TestFalse(TEXT("Quantity negativa"), FCatalogInventoryRules::CanUse(true, 3, -1));
+	TestTrue(TEXT("No teto por chamada"), FCatalogInventoryRules::CanUse(true, 1000, Cap));
+	TestFalse(TEXT("Acima do teto por chamada"), FCatalogInventoryRules::CanUse(true, 1000, Cap + 1));
 	return true;
 }
 

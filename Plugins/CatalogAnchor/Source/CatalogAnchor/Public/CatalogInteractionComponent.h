@@ -8,10 +8,35 @@
 
 class AActor;
 class AController;
+struct FCollisionQueryParams;
 struct FHitResult;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FCatalogInteractionTargetChanged, AActor*, NewTarget);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FCatalogInteractionCompleted, AActor*, Target, bool, bConsumed);
+
+/** Por que uma tentativa de interação foi recusada (OnInteractionFailed). */
+UENUM(BlueprintType)
+enum class ECatalogInteractionFailReason : uint8
+{
+	/** Há alvo, mas IsInteractionBlocked (trancado, sem chave...); também quando o bloqueio derruba um hold. */
+	Blocked,
+	/** A mira está num interagível além do alcance (TraceDistance). */
+	OutOfRange,
+	/** Tentativa dentro do InteractionCooldownSeconds. */
+	Cooldown,
+	/** Nada interagível sob a mira (ou o alvo do hold saiu dela). */
+	NoTarget
+};
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FCatalogInteractionFailed, AActor*, Target, ECatalogInteractionFailReason, Reason);
+
+/** Candidato do assist esférico: entrada da seleção pura SelectBestCandidate. */
+struct FCatalogInteractionCandidate
+{
+	int32 Priority = 0;
+	/** Distância (cm) do centro do alvo ao eixo da mira. */
+	float AimDistance = 0.f;
+};
 
 /**
  * Componente de interação por trace (catálogo §8), v2 com hold-to-interact.
@@ -21,6 +46,8 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FCatalogInteractionCompleted, AActo
  *   o dono calcula o progresso localmente com AGameStateBase::GetServerWorldTimeSeconds(),
  *   sem replicar um float por frame.
  * - Cooldown anti-spam e IsInteractionBlocked são checados no servidor antes de completar.
+ * - Assist esférico opcional (bUseSphereAssist) escolhe por GetInteractionPriority e depois pela mira.
+ * - Recusas viram OnInteractionFailed; CVar catalog.Interaction.Debug desenha o trace (não-Shipping).
  */
 UCLASS(ClassGroup = (Catalog), meta = (BlueprintSpawnableComponent))
 class CATALOGANCHOR_API UCatalogInteractionComponent : public UActorComponent
@@ -50,6 +77,17 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Catalog|Interaction")
 	TEnumAsByte<ECollisionChannel> TraceChannel = ECC_Visibility;
 
+	/**
+	 * Quando o trace de mira não acha interagível, varre uma esfera de AssistRadius ao longo da mira e
+	 * escolhe entre os interagíveis visíveis: maior GetInteractionPriority, depois o mais perto do centro da mira.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Catalog|Interaction")
+	bool bUseSphereAssist = false;
+
+	/** Raio (cm) do assist esférico. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Catalog|Interaction", meta = (ClampMin = "0.0", EditCondition = "bUseSphereAssist"))
+	float AssistRadius = 60.f;
+
 	/** Servidor atualiza CurrentTarget a cada tick (desligue se preferir poll manual; durante um hold o trace roda sempre). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Catalog|Interaction")
 	bool bAutoTrace = true;
@@ -69,6 +107,14 @@ public:
 	/** OnInteract rodou no servidor. Dispara no servidor e, se o dono for remoto, no cliente dono (Client RPC). */
 	UPROPERTY(BlueprintAssignable, Category = "Catalog|Interaction")
 	FCatalogInteractionCompleted OnInteractionCompleted;
+
+	/**
+	 * Tentativa recusada (Reason). Target é o alvo envolvido e pode ser nulo (Cooldown sem alvo, NoTarget).
+	 * Dispara no servidor e, se o dono for remoto, uma vez no cliente dono (Client RPC não confiável: é cosmético).
+	 * Host listen e AI só recebem o broadcast local, sem duplicar.
+	 */
+	UPROPERTY(BlueprintAssignable, Category = "Catalog|Interaction")
+	FCatalogInteractionFailed OnInteractionFailed;
 
 	/**
 	 * Interação instantânea. Servidor: refaz o trace e chama OnInteract; retorna o resultado dele.
@@ -124,20 +170,30 @@ public:
 	static bool ComputeTraceSegment(const FVector& ViewLocation, const FVector& ViewDirection,
 		const FVector& ReachOrigin, float Reach, FVector& OutStart, FVector& OutEnd);
 
+	/**
+	 * Escolha pura do assist: maior Priority; empate = menor AimDistance; empate = o primeiro (a varredura
+	 * entrega do mais perto ao mais longe). Ignora AimDistance não finita. INDEX_NONE sem candidato válido.
+	 */
+	static int32 SelectBestCandidate(TConstArrayView<FCatalogInteractionCandidate> Candidates);
+
 protected:
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
 	UFUNCTION()
 	void OnRep_CurrentTarget();
 
-	UFUNCTION(Server, Reliable)
+	UFUNCTION(Server, Reliable, WithValidation)
 	void ServerTryInteract();
 
-	UFUNCTION(Server, Reliable)
+	UFUNCTION(Server, Reliable, WithValidation)
 	void ServerBeginInteract();
 
-	UFUNCTION(Server, Reliable)
+	UFUNCTION(Server, Reliable, WithValidation)
 	void ServerEndInteract();
+
+	/** Leva OnInteractionFailed ao dono remoto (cosmético: não confiável). */
+	UFUNCTION(Client, Unreliable)
+	void ClientInteractionFailed(AActor* Target, ECatalogInteractionFailReason Reason);
 
 	/** Leva OnInteractionCompleted ao dono remoto, que não vê o broadcast do servidor. */
 	UFUNCTION(Client, Reliable)
@@ -162,6 +218,9 @@ protected:
 	/** Chama OnInteract e dispara OnInteractionCompleted (servidor + dono remoto). */
 	bool CompleteInteraction(AActor* Target);
 
+	/** Dispara OnInteractionFailed (servidor + dono remoto). Só autoridade. */
+	void FailInteraction(AActor* Target, ECatalogInteractionFailReason Reason);
+
 	/** Emite foco/OnTargetChanged quando CurrentTarget difere do último alvo anunciado. */
 	void SyncFocus();
 
@@ -169,6 +228,22 @@ protected:
 	double GetServerTimeSeconds() const;
 
 	bool PerformTrace(FHitResult& OutHit) const;
+
+	/** Segmento e parâmetros do trace para um alcance (mira pela câmera, alcance do pawn). */
+	bool BuildTraceSegment(float Reach, FVector& OutStart, FVector& OutEnd, FCollisionQueryParams& OutParams) const;
+
+	/** Line trace (Radius ~ 0) ou sphere-sweep em TraceChannel. */
+	bool TraceSegment(const FVector& Start, const FVector& End, const FCollisionQueryParams& Params,
+		float Radius, FHitResult& OutHit) const;
+
+	/** Trace de mira + assist esférico; devolve o interagível escolhido (ou nullptr) e desenha o debug. */
+	AActor* FindTarget() const;
+
+	/** Interagíveis visíveis na varredura esférica de AssistRadius; escolhe via SelectBestCandidate. */
+	AActor* FindAssistTarget(const FVector& Start, const FVector& End, FCollisionQueryParams Params) const;
+
+	/** Interagível na mira além do alcance (sonda mais longa), ou nullptr. Só roda quando a tentativa falhou. */
+	AActor* FindOutOfRangeTarget() const;
 
 private:
 	/** Alvo do hold em andamento (só servidor). */

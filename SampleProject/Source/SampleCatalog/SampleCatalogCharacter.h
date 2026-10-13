@@ -68,11 +68,14 @@ protected:
 	virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
 	virtual void NotifyControllerChanged() override;
 
-	/** Consome 1 poção e cura (o servidor confere inventário e vida). */
-	UFUNCTION(Server, Reliable)
+	/** Morto (vida replicada) não pula: vale no cliente remoto e na predição do servidor. */
+	virtual bool CanJumpInternal_Implementation() const override;
+
+	/** Consome 1 poção e cura (o servidor confere inventário e vida). Sem parâmetros: _Validate só garante os componentes. */
+	UFUNCTION(Server, Reliable, WithValidation)
 	void ServerUsePotion();
 
-	/** Servidor: trava o movimento e agenda o respawn (atraso para os clientes verem a morte replicada). */
+	/** Todas as máquinas: encerra a interação. Servidor: trava o movimento e agenda o respawn (atraso para os clientes verem a morte replicada). */
 	UFUNCTION()
 	void HandleDeath(AActor* Killer);
 

@@ -17,7 +17,9 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FCatalogDeath, AActor*, Killer);
  * O servidor decide; Health replica para todos (barra sobre inimigos), e OnHealthChanged/OnDeath
  * disparam no servidor e nos clientes. OnDeath: uma vez por transição vivo→morto (ResetHealth revive).
  * Cliente vê só o valor replicado: dano e respawn no mesmo envio (ex.: ResetHealth dentro de OnDeath)
- * se fundem, e o cliente pode não receber OnDeath.
+ * se fundem e o cliente pode não receber OnDeath; o estado final (GetHealth/IsDead) sempre converge,
+ * então reaja a IsDead() e não conte só com OnDeath. Na 1ª replicação recebida o cliente emite
+ * OnHealthChanged(Health, 0) (sem delta falso contra o default) e OnDeath(nullptr) se já nasce morto.
  */
 UCLASS(ClassGroup = (Catalog), meta = (BlueprintSpawnableComponent))
 class CATALOGANCHOR_API UCatalogHealthComponent : public UActorComponent
@@ -85,4 +87,7 @@ private:
 	void SetHealthWithAuthority(float NewHealth, AActor* Causer);
 
 	void BroadcastChange(float OldHealth, AActor* Causer);
+
+	/** Cliente: já recebeu o 1º valor replicado (antes dele, Health vale o default, não o do servidor). */
+	bool bReceivedFirstHealth = false;
 };

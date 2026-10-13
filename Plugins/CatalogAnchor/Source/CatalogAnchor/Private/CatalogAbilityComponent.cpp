@@ -91,6 +91,12 @@ bool UCatalogAbilityComponent::TryActivateAbility(FGameplayTag AbilityTag)
 
 	if (!Owner->HasAuthority())
 	{
+		// Tag inválida nem sai do cliente: o _Validate do servidor desconectaria quem só errou o Blueprint.
+		if (!AbilityTag.IsValid())
+		{
+			OnAbilityFailed.Broadcast(AbilityTag, CatalogAbilityFailure::NotGranted);
+			return false;
+		}
 		// O servidor decide e avisa falhas; aqui só uma estimativa para o input/HUD responder já.
 		ServerTryActivateAbility(AbilityTag);
 		const UCatalogAbilityDefinition* Definition = FindAbilityDefinition(AbilityTag);
@@ -98,6 +104,11 @@ bool UCatalogAbilityComponent::TryActivateAbility(FGameplayTag AbilityTag)
 			&& Definition->Behavior->CanActivate(Owner);
 	}
 	return ActivateWithAuthority(AbilityTag);
+}
+
+bool UCatalogAbilityComponent::ServerTryActivateAbility_Validate(FGameplayTag AbilityTag)
+{
+	return AbilityTag.IsValid();
 }
 
 void UCatalogAbilityComponent::ServerTryActivateAbility_Implementation(FGameplayTag AbilityTag)

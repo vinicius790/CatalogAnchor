@@ -11,10 +11,28 @@
 #include "Engine/World.h"
 #include "Net/UnrealNetwork.h"
 #include "CollisionQueryParams.h"
+#include "DrawDebugHelpers.h"
+#include "HAL/IConsoleManager.h"
+
+#if ENABLE_DRAW_DEBUG
+static TAutoConsoleVariable<int32> CVarCatalogInteractionDebug(TEXT("catalog.Interaction.Debug"), 0,
+	TEXT("0/1: desenha o trace de interação, o assist esférico e o alvo (só builds não-Shipping)."), ECVF_Default);
+#endif
 
 // Nomeado (não anônimo): em unity build vários .cpp dividem a mesma unidade de tradução.
 namespace CatalogInteractionPrivate
 {
+	/** Teto de interagíveis avaliados pelo assist (1 sweep cada): limita o custo por trace. */
+	static constexpr int32 MaxAssistCandidates = 8;
+
+	/** Sonda de OutOfRange: múltiplo do alcance. shortcut: fixo; vira UPROPERTY se algum jogo precisar. */
+	static constexpr float OutOfRangeProbeFactor = 3.f;
+
+	static bool IsInteractable(const AActor* Actor)
+	{
+		return Actor && Actor->GetClass()->ImplementsInterface(UCatalogInteractable::StaticClass());
+	}
+
 	/** NaN, 0 ou negativo = instantâneo (valor vindo de Blueprint não é confiável). */
 	static bool IsHoldDuration(float Duration)
 	{
@@ -146,16 +164,16 @@ bool UCatalogInteractionComponent::ComputeTraceSegment(const FVector& ViewLocati
 	return true;
 }
 
-bool UCatalogInteractionComponent::PerformTrace(FHitResult& OutHit) const
+bool UCatalogInteractionComponent::BuildTraceSegment(float Reach, FVector& OutStart, FVector& OutEnd,
+	FCollisionQueryParams& OutParams) const
 {
 	AActor* Owner = GetOwner();
-	const UWorld* World = GetWorld();
-	if (!Owner || !World)
+	if (!Owner || !GetWorld())
 	{
 		return false;
 	}
 
-	FCollisionQueryParams Params(SCENE_QUERY_STAT(CatalogInteractTrace), false, Owner);
+	OutParams = FCollisionQueryParams(SCENE_QUERY_STAT(CatalogInteractTrace), false, Owner);
 
 	// Sem controller (ator solto, pawn sem possessão): mira e alcance saem do próprio dono.
 	FVector ViewLocation = Owner->GetActorLocation();
@@ -173,24 +191,147 @@ bool UCatalogInteractionComponent::PerformTrace(FHitResult& OutHit) const
 			// Dono Controller/PlayerState: o pawn não é o ignorado padrão e a mira sairia da cápsula.
 			if (Pawn != Owner)
 			{
-				Params.AddIgnoredActor(Pawn);
+				OutParams.AddIgnoredActor(Pawn);
 			}
 		}
 	}
 
-	FVector Start;
-	FVector End;
-	if (!ComputeTraceSegment(ViewLocation, ViewRotation.Vector(), ReachOrigin, TraceDistance, Start, End))
+	return ComputeTraceSegment(ViewLocation, ViewRotation.Vector(), ReachOrigin, Reach, OutStart, OutEnd);
+}
+
+bool UCatalogInteractionComponent::TraceSegment(const FVector& Start, const FVector& End,
+	const FCollisionQueryParams& Params, float Radius, FHitResult& OutHit) const
+{
+	const UWorld* World = GetWorld();
+	if (!World)
 	{
 		return false;
 	}
-
-	if (TraceRadius > UE_KINDA_SMALL_NUMBER)
+	if (Radius > UE_KINDA_SMALL_NUMBER)
 	{
 		return World->SweepSingleByChannel(OutHit, Start, End, FQuat::Identity,
-			TraceChannel, FCollisionShape::MakeSphere(TraceRadius), Params);
+			TraceChannel, FCollisionShape::MakeSphere(Radius), Params);
 	}
 	return World->LineTraceSingleByChannel(OutHit, Start, End, TraceChannel, Params);
+}
+
+bool UCatalogInteractionComponent::PerformTrace(FHitResult& OutHit) const
+{
+	FVector Start;
+	FVector End;
+	FCollisionQueryParams Params;
+	return BuildTraceSegment(TraceDistance, Start, End, Params) && TraceSegment(Start, End, Params, TraceRadius, OutHit);
+}
+
+int32 UCatalogInteractionComponent::SelectBestCandidate(TConstArrayView<FCatalogInteractionCandidate> Candidates)
+{
+	int32 Best = INDEX_NONE;
+	for (int32 Index = 0; Index < Candidates.Num(); ++Index)
+	{
+		const FCatalogInteractionCandidate& It = Candidates[Index];
+		if (!FMath::IsFinite(It.AimDistance))
+		{
+			continue;
+		}
+		if (Best == INDEX_NONE || It.Priority > Candidates[Best].Priority
+			|| (It.Priority == Candidates[Best].Priority && It.AimDistance < Candidates[Best].AimDistance))
+		{
+			Best = Index;
+		}
+	}
+	return Best;
+}
+
+AActor* UCatalogInteractionComponent::FindAssistTarget(const FVector& Start, const FVector& End,
+	FCollisionQueryParams Params) const
+{
+	TArray<FCatalogInteractionCandidate, TInlineAllocator<CatalogInteractionPrivate::MaxAssistCandidates>> Candidates;
+	TArray<AActor*, TInlineAllocator<CatalogInteractionPrivate::MaxAssistCandidates>> Actors;
+
+	// Um sweep por candidato, ignorando os já achados: sweep múltiplo pararia no 1º bloqueio.
+	// shortcut: termina no 1º oclusor não interativo, então um objeto lateral mais perto da câmera
+	// esconde alvos atrás dele; troque por overlap + linha de visada se isso incomodar.
+	FHitResult Hit;
+	while (Actors.Num() < CatalogInteractionPrivate::MaxAssistCandidates
+		&& TraceSegment(Start, End, Params, AssistRadius, Hit))
+	{
+		AActor* HitActor = Hit.GetActor();
+		if (!CatalogInteractionPrivate::IsInteractable(HitActor))
+		{
+			break;
+		}
+		// Centro visual do alvo (bounds colidíveis); pivô nos pés não deve decidir a mira.
+		const FBox Bounds = HitActor->GetComponentsBoundingBox();
+		const FVector Center = Bounds.IsValid ? Bounds.GetCenter() : HitActor->GetActorLocation();
+		Candidates.Add({ ICatalogInteractable::Execute_GetInteractionPriority(HitActor),
+			static_cast<float>(FMath::PointDistToSegment(Center, Start, End)) });
+		Actors.Add(HitActor);
+		Params.AddIgnoredActor(HitActor);
+	}
+
+	const int32 Best = SelectBestCandidate(Candidates);
+	return Best != INDEX_NONE ? Actors[Best] : nullptr;
+}
+
+AActor* UCatalogInteractionComponent::FindOutOfRangeTarget() const
+{
+	FVector Start;
+	FVector End;
+	FCollisionQueryParams Params;
+	FHitResult Hit;
+	// Mesmo raio da mira, só mais longe: o trecho dentro do alcance já falhou, então o que acha está além.
+	if (BuildTraceSegment(TraceDistance * CatalogInteractionPrivate::OutOfRangeProbeFactor, Start, End, Params)
+		&& TraceSegment(Start, End, Params, TraceRadius, Hit)
+		&& CatalogInteractionPrivate::IsInteractable(Hit.GetActor()))
+	{
+		return Hit.GetActor();
+	}
+	return nullptr;
+}
+
+AActor* UCatalogInteractionComponent::FindTarget() const
+{
+	FVector Start;
+	FVector End;
+	FCollisionQueryParams Params;
+	if (!BuildTraceSegment(TraceDistance, Start, End, Params))
+	{
+		return nullptr;
+	}
+
+	FHitResult Hit;
+	AActor* Target = nullptr;
+	if (TraceSegment(Start, End, Params, TraceRadius, Hit)
+		&& CatalogInteractionPrivate::IsInteractable(Hit.GetActor()))
+	{
+		Target = Hit.GetActor();
+	}
+
+	const bool bAssist = !Target && bUseSphereAssist && AssistRadius > UE_KINDA_SMALL_NUMBER;
+	if (bAssist)
+	{
+		Target = FindAssistTarget(Start, End, Params);
+	}
+
+#if ENABLE_DRAW_DEBUG
+	if (CVarCatalogInteractionDebug.GetValueOnGameThread() > 0)
+	{
+		// Por tick o desenho dura um frame; em tentativa avulsa (sem auto trace) fica 1 s para dar para ver.
+		const float Life = bAutoTrace ? 0.f : 1.f;
+		const FColor Color = Target ? FColor::Green : FColor::Red;
+		DrawDebugLine(GetWorld(), Start, End, Color, false, Life);
+		if (bAssist)
+		{
+			const FVector Anchor = Target ? FMath::ClosestPointOnSegment(Target->GetActorLocation(), Start, End) : End;
+			DrawDebugSphere(GetWorld(), Anchor, AssistRadius, 12, FColor::Cyan, false, Life);
+		}
+		if (Target)
+		{
+			DrawDebugSphere(GetWorld(), Target->GetActorLocation(), 12.f, 8, Color, false, Life);
+		}
+	}
+#endif
+	return Target;
 }
 
 AActor* UCatalogInteractionComponent::RefreshTarget()
@@ -203,19 +344,7 @@ AActor* UCatalogInteractionComponent::RefreshTarget()
 		return CurrentTarget.Get();
 	}
 
-	FHitResult Hit;
-	AActor* NewTarget = nullptr;
-	if (PerformTrace(Hit))
-	{
-		if (AActor* HitActor = Hit.GetActor())
-		{
-			if (HitActor->GetClass()->ImplementsInterface(UCatalogInteractable::StaticClass()))
-			{
-				NewTarget = HitActor;
-			}
-		}
-	}
-
+	AActor* NewTarget = FindTarget();
 	CurrentTarget = NewTarget;
 	SyncFocus();
 	return NewTarget;
@@ -286,6 +415,12 @@ bool UCatalogInteractionComponent::TryInteract()
 	return InteractWithAuthority();
 }
 
+// Sem parâmetros do cliente: nada a validar; o servidor refaz trace, alcance e cooldown.
+bool UCatalogInteractionComponent::ServerTryInteract_Validate()
+{
+	return true;
+}
+
 void UCatalogInteractionComponent::ServerTryInteract_Implementation()
 {
 	InteractWithAuthority();
@@ -305,6 +440,11 @@ bool UCatalogInteractionComponent::BeginInteract()
 		return CurrentTarget.IsValid();
 	}
 	return BeginInteractWithAuthority();
+}
+
+bool UCatalogInteractionComponent::ServerBeginInteract_Validate()
+{
+	return true;
 }
 
 void UCatalogInteractionComponent::ServerBeginInteract_Implementation()
@@ -328,6 +468,11 @@ void UCatalogInteractionComponent::EndInteract()
 	CancelHold();
 }
 
+bool UCatalogInteractionComponent::ServerEndInteract_Validate()
+{
+	return true;
+}
+
 void UCatalogInteractionComponent::ServerEndInteract_Implementation()
 {
 	CancelHold();
@@ -345,6 +490,7 @@ AActor* UCatalogInteractionComponent::AcquireTargetWithAuthority()
 	if (Now < NextInteractionTime)
 	{
 		UE_LOG(LogCatalogAnchor, Verbose, TEXT("%s: interacao ignorada (cooldown)."), *GetNameSafe(Owner));
+		FailInteraction(CurrentTarget.Get(), ECatalogInteractionFailReason::Cooldown);
 		return nullptr;
 	}
 
@@ -352,6 +498,8 @@ AActor* UCatalogInteractionComponent::AcquireTargetWithAuthority()
 	AActor* Target = RefreshTarget();
 	if (!Target)
 	{
+		AActor* FarTarget = FindOutOfRangeTarget();
+		FailInteraction(FarTarget, FarTarget ? ECatalogInteractionFailReason::OutOfRange : ECatalogInteractionFailReason::NoTarget);
 		return nullptr;
 	}
 
@@ -359,6 +507,7 @@ AActor* UCatalogInteractionComponent::AcquireTargetWithAuthority()
 	if (ICatalogInteractable::Execute_IsInteractionBlocked(Target, Owner))
 	{
 		UE_LOG(LogCatalogAnchor, Verbose, TEXT("%s: %s esta bloqueado."), *GetNameSafe(Owner), *GetNameSafe(Target));
+		FailInteraction(Target, ECatalogInteractionFailReason::Blocked);
 		return nullptr;
 	}
 	return Target;
@@ -410,10 +559,12 @@ bool UCatalogInteractionComponent::BeginInteractWithAuthority()
 void UCatalogInteractionComponent::TickHoldWithAuthority()
 {
 	AActor* Target = HoldTarget.Get();
-	if (!Target || Target != CurrentTarget.Get()
-		|| ICatalogInteractable::Execute_IsInteractionBlocked(Target, GetOwner()))
+	const bool bLostAim = !Target || Target != CurrentTarget.Get();
+	if (bLostAim || ICatalogInteractable::Execute_IsInteractionBlocked(Target, GetOwner()))
 	{
+		// Cancela antes: o listener pode reentrar (ex.: Blueprint chamando BeginInteract).
 		CancelHold();
+		FailInteraction(Target, bLostAim ? ECatalogInteractionFailReason::NoTarget : ECatalogInteractionFailReason::Blocked);
 		return;
 	}
 
@@ -445,6 +596,23 @@ bool UCatalogInteractionComponent::CompleteInteraction(AActor* Target)
 		ClientInteractionCompleted(Target, bConsumed);
 	}
 	return bConsumed;
+}
+
+void UCatalogInteractionComponent::FailInteraction(AActor* Target, ECatalogInteractionFailReason Reason)
+{
+	OnInteractionFailed.Broadcast(Target, Reason);
+
+	// Mesma regra do CompleteInteraction: host local e AI já ouviram o broadcast acima.
+	const AActor* Owner = GetOwner();
+	if (Owner && Owner->GetNetConnection() != nullptr)
+	{
+		ClientInteractionFailed(Target, Reason);
+	}
+}
+
+void UCatalogInteractionComponent::ClientInteractionFailed_Implementation(AActor* Target, ECatalogInteractionFailReason Reason)
+{
+	OnInteractionFailed.Broadcast(Target, Reason);
 }
 
 void UCatalogInteractionComponent::ClientInteractionCompleted_Implementation(AActor* Target, bool bConsumed)

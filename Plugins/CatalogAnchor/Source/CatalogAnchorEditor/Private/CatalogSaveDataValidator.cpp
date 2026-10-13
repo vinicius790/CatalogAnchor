@@ -73,6 +73,18 @@ TArray<FText> UCatalogSaveDataValidator::GetPayloadErrors(const FCatalogSavePayl
 	return Errors;
 }
 
+FCatalogValidationIssues UCatalogSaveDataValidator::GetIssues(const UCatalogSaveTemplate& Template)
+{
+	FCatalogValidationIssues Issues;
+	Issues.Errors = GetPayloadErrors(Template.Payload);
+
+	if (!CatalogFollowsNamingConvention(Template.GetName(), TEXT("CA_Save_")))
+	{
+		Issues.Warnings.Add(LOCTEXT("Naming", "CatalogAnchor: convenção de nome é CA_Save_<Nome>."));
+	}
+	return Issues;
+}
+
 bool UCatalogSaveDataValidator::CanValidateAsset_Implementation(const FAssetData& InAssetData, UObject* InObject,
 	FDataValidationContext& InContext) const
 {
@@ -89,18 +101,17 @@ EDataValidationResult UCatalogSaveDataValidator::ValidateLoadedAsset_Implementat
 		return EDataValidationResult::Invalid;
 	}
 
-	const TArray<FText> Errors = GetPayloadErrors(Template->Payload);
-	for (const FText& Error : Errors)
+	const FCatalogValidationIssues Issues = GetIssues(*Template);
+	for (const FText& Error : Issues.Errors)
 	{
 		AssetFails(InAsset, Error);
 	}
-
-	if (!CatalogFollowsNamingConvention(InAsset->GetName(), TEXT("CA_Save_")))
+	for (const FText& Warning : Issues.Warnings)
 	{
-		AssetWarning(InAsset, LOCTEXT("Naming", "CatalogAnchor: convenção de nome é CA_Save_<Nome>."));
+		AssetWarning(InAsset, Warning);
 	}
 
-	if (Errors.Num() > 0)
+	if (Issues.Errors.Num() > 0)
 	{
 		return EDataValidationResult::Invalid;
 	}

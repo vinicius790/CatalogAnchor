@@ -33,6 +33,13 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FCatalogSaveLoaded, const FCatalogSa
  * Chamadas recusadas na hora (nome inválido, slot ocupado) só retornam false. Gravações e
  * loads aceitos (SaveGame, SavePayloadToSlot, LoadGame, Async*) sempre terminam em
  * OnSaveCompleted/OnLoadCompleted; LoadPayloadFromSlot e DeleteSlot não disparam eventos.
+ *
+ * Integridade: toda gravação leva o CRC32 do payload (UCatalogSaveGame::PayloadCrc) e todo
+ * load o confere. Antes de sobrescrever um slot, o arquivo atual vira `<slot>_bak` (e os
+ * anteriores `_bak2`... até Settings → BackupCount), mas só se ele próprio estiver íntegro.
+ * Slot ilegível ou com CRC errado cai no backup mais novo íntegro (log Warning); schema mais
+ * novo que o plugin NÃO cai: não é corrupção. A rotação roda no game thread, antes da escrita
+ * assíncrona. Nomes terminados em `_bak`/`_bakN` são reservados aos backups (IsValidSlotName).
  */
 UCLASS()
 class CATALOGANCHOR_API UCatalogSaveSubsystem : public UGameInstanceSubsystem
@@ -70,9 +77,24 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Catalog|Save")
 	bool LoadPayloadFromSlot(FName SlotName, FCatalogSavePayload& OutPayload);
 
-	/** Apaga o arquivo do slot. false se não existia ou não pôde ser apagado. */
+	/**
+	 * Apaga o arquivo do slot e todos os seus backups (senão o slot voltaria no fallback).
+	 * false se o arquivo do slot não existia ou não pôde ser apagado, ou se o nome é inválido.
+	 */
 	UFUNCTION(BlueprintCallable, Category = "Catalog|Save")
 	bool DeleteSlot(FName SlotName);
+
+	/**
+	 * Slots em disco, do mais recente para o mais antigo (ilegíveis e ocupados por último), com
+	 * metadados leves para menus. Backups não entram. A lista vem de ISaveGameSystem::GetSaveGameNames;
+	 * em plataforma sem esse suporte vale só o que este subsystem já gravou/leu nesta sessão
+	 * mais o AutosaveSlotName. Abre cada arquivo: chame ao abrir o menu, não por frame.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Catalog|Save")
+	TArray<FCatalogSaveSlotInfo> ListSaveSlots();
+
+	/** Nome interno do backup (1 = mais novo): `<slot>_bak`, `<slot>_bak2`... em minúsculas. NAME_None se BackupIndex < 1. */
+	static FName GetBackupSlotName(FName SlotName, int32 BackupIndex);
 
 	UFUNCTION(BlueprintPure, Category = "Catalog|Save")
 	bool DoesSlotExist(FName SlotName) const;
@@ -80,7 +102,8 @@ public:
 	/**
 	 * Letras/dígitos ASCII, '_' ou '-', 1..128 caracteres: o nome vira arquivo .sav e
 	 * precisa ser portátil. Não diferencia maiúsculas: "Slot" e "slot" são o mesmo arquivo.
-	 * Recusa nomes de dispositivo do Windows (CON, PRN, AUX, NUL, COM0-9, LPT0-9).
+	 * Recusa nomes de dispositivo do Windows (CON, PRN, AUX, NUL, COM0-9, LPT0-9) e os que
+	 * terminam em "_bak" ou "_bak" + dígitos, reservados aos backups.
 	 */
 	UFUNCTION(BlueprintPure, Category = "Catalog|Save")
 	static bool IsValidSlotName(FName SlotName);
@@ -99,6 +122,9 @@ public:
 	/** Tira só este objeto: um substituto registrado com a mesma chave continua. */
 	void UnregisterParticipant(UObject* Participant);
 
+	/** Participantes vivos registrados agora (diagnóstico, ex.: catalog.Debug.Dump). */
+	int32 GetParticipantCount() const;
+
 	UPROPERTY(BlueprintAssignable, Category = "Catalog|Save")
 	FCatalogSaveCompleted OnSaveCompleted;
 
@@ -115,6 +141,7 @@ private:
 	void AdoptPayload(const FCatalogSavePayload& Payload);
 	void ApplyLoadedPayload(const FCatalogSavePayload& Payload);
 	bool CanUseSlot(FName SlotName, const TCHAR* Operation) const;
+	void RememberSlot(FName SlotName);
 	TArray<ICatalogSaveParticipant*> GetLiveParticipants();
 	double GetPlaytimeSeconds() const;
 	void HandleAutosave();
@@ -135,6 +162,9 @@ private:
 
 	/** Slots com operação assíncrona em andamento (FName compara sem caixa, como os arquivos). */
 	TSet<FName> BusySlots;
+
+	/** Slots gravados/lidos nesta sessão: o que ListSaveSlots ainda enxerga onde a plataforma não lista arquivos. */
+	TArray<FName> KnownSlots;
 
 	/** Tempo de jogo = base (do último save/load) + tempo real desde AnchorSeconds. */
 	double PlaytimeBaseSeconds = 0.0;

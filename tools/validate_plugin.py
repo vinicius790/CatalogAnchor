@@ -8,10 +8,12 @@ Exit 0 on success; print violations and exit 1 on failure.
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 import re
 import subprocess
 import sys
+from collections.abc import Callable
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -41,6 +43,16 @@ INCLUDE_RE = re.compile(r'^\s*#\s*include\s*[<"]([^">]+)[">]')
 UHT_MACRO_RE = re.compile(r"^\s*(UCLASS|USTRUCT|UINTERFACE|UENUM)\s*\(")
 TYPE_DECL_RE = re.compile(r"^\s*(class|struct)\s")
 LOGTEMP_RE = re.compile(r"\bLogTemp\b")
+# Testes de automação (nome único com prefixo), contagens citadas nos docs e RPCs de servidor.
+# CUSTOM_* leva a classe-base antes do nome; o nome é sempre o primeiro literal da chamada.
+AUTOMATION_TEST_RE = re.compile(
+    r'^[ \t]*IMPLEMENT_\w*AUTOMATION_TEST\s*\(\s*\w+\s*,\s*(?:\w+\s*,\s*)?"([^"\n]*)"', re.MULTILINE
+)
+AUTOMATION_NAME_RE = re.compile(r"^CatalogAnchor(\.[A-Za-z0-9_]+){2,}$")
+DOC_AUTOMATION_COUNT_RE = re.compile(r"(\d+)\s+testes\s+(?:C\+\+|de automação|verdes)")
+DOC_PYTEST_COUNT_RE = re.compile(r"(\d+)\s+casos\s+de\s+pytest|pytest\s*\(\s*(\d+)\s+casos\s*\)")
+UFUNCTION_RE = re.compile(r"\bUFUNCTION\s*\(")
+FUNCTION_NAME_RE = re.compile(r"(\w+)\s*\(")
 UTF8_BOM = b"\xef\xbb\xbf"
 # Sem BOM o MSVC pode ler o fonte na codepage do Windows e corromper acentos em TEXT()/LOCTEXT.
 NON_ASCII_WITHOUT_BOM = "arquivo com caractere não-ASCII precisa começar com BOM UTF-8"
@@ -108,12 +120,16 @@ def engine_at_least_min(value: Any) -> bool:
 class ValidationResult:
     def __init__(self) -> None:
         self.errors: list[str] = []
+        self.warnings: list[str] = []
 
     def ok(self) -> bool:
         return not self.errors
 
     def fail(self, msg: str) -> None:
         self.errors.append(msg)
+
+    def warn(self, msg: str) -> None:
+        self.warnings.append(msg)
 
 
 def validate_uplugin(data: dict[str, Any], result: ValidationResult) -> None:
@@ -325,6 +341,134 @@ def lint_cpp_tree(root: Path) -> list[str]:
     return errors
 
 
+def cpp_texts(root: Path) -> dict[str, str]:
+    """Caminho relativo -> texto sem comentários, de todos os .h/.cpp do lint (não-UTF-8 o lint já reporta)."""
+    texts: dict[str, str] = {}
+    for path in cpp_source_files(root):
+        try:
+            texts[path.relative_to(root).as_posix()] = blank_comments(path.read_text(encoding="utf-8-sig"))
+        except UnicodeDecodeError:
+            pass
+    return texts
+
+
+def line_of(text: str, pos: int) -> int:
+    return text.count("\n", 0, pos) + 1
+
+
+def automation_tests(texts: dict[str, str]) -> list[tuple[str, int, str]]:
+    """(arquivo, linha, nome) de cada IMPLEMENT_*_AUTOMATION_TEST."""
+    return [
+        (rel, line_of(text, m.start()), m[1])
+        for rel, text in texts.items()
+        for m in AUTOMATION_TEST_RE.finditer(text)
+    ]
+
+
+def validate_automation_names(tests: list[tuple[str, int, str]], result: ValidationResult) -> None:
+    seen: dict[str, str] = {}
+    for rel, line, name in tests:
+        where = f"{rel}:{line}"
+        if not AUTOMATION_NAME_RE.match(name):
+            result.fail(f"{where}: teste de automação {name!r} fora do padrão CatalogAnchor.<Área>.<Caso>")
+        if name in seen:
+            result.fail(f"{where}: teste de automação {name!r} duplicado (já em {seen[name]})")
+        seen.setdefault(name, where)
+
+
+def ufunction_specifiers(text: str, open_idx: int) -> tuple[set[str], int]:
+    """Nomes (antes do '=') dos especificadores do UFUNCTION( ... ) aberto em open_idx e o índice após o ')'."""
+    depth, in_str, cur, parts = 0, False, "", []
+    for i in range(open_idx, len(text)):
+        c = text[i]
+        if in_str:
+            in_str = c != '"'  # shortcut: sem aspas escapadas, UFUNCTION não usa
+        elif c == '"':
+            in_str = True
+        elif c == "(":
+            depth += 1
+            if depth == 1:
+                continue
+        elif c == ")":
+            depth -= 1
+            if depth == 0:
+                parts.append(cur)
+                return {p.split("=")[0].strip() for p in parts}, i + 1
+        elif c == "," and depth == 1:
+            parts.append(cur)
+            cur = ""
+            continue
+        cur += c
+    return set(), len(text)  # parêntese sem fechar: o compilador reclama
+
+
+def validate_server_rpcs(texts: dict[str, str], report: Callable[[str], None]) -> None:
+    """Todo UFUNCTION(Server...) tem WithValidation e a função <Nome>_Validate definida."""
+    all_code = "\n".join(texts.values())
+    for rel, text in texts.items():
+        if not rel.endswith(".h"):
+            continue
+        for m in UFUNCTION_RE.finditer(text):
+            specs, end = ufunction_specifiers(text, m.end() - 1)
+            decl = FUNCTION_NAME_RE.search(text, end)
+            if "Server" not in specs or decl is None:
+                continue
+            name, where = decl[1], f"{rel}:{line_of(text, m.start())}"
+            if "WithValidation" not in specs:
+                report(f"{where}: UFUNCTION(Server) {name}() sem WithValidation (valide a entrada do cliente)")
+            elif not re.search(rf"\b{name}_Validate\s*\(", all_code):
+                report(f"{where}: {name}_Validate() não encontrada (exigida por WithValidation)")
+
+
+def pytest_case_count(tests_dir: Path) -> int | None:
+    """Casos que o pytest coletaria em tests/test_*.py, contados via AST; None quando não dá para contar.
+
+    shortcut: parametrize só com lista/tupla literal e sem fixture com params, upgrade: pytest --collect-only.
+    """
+    total = 0
+    for path in sorted(tests_dir.glob("test_*.py")):
+        try:
+            body = ast.parse(path.read_bytes()).body
+        except SyntaxError:
+            return None
+        funcs = [n for n in body if isinstance(n, ast.FunctionDef)]
+        for cls in (n for n in body if isinstance(n, ast.ClassDef) and n.name.startswith("Test")):
+            funcs += [n for n in cls.body if isinstance(n, ast.FunctionDef)]
+        for fn in funcs:
+            if not fn.name.startswith("test"):
+                continue
+            cases = 1
+            for dec in fn.decorator_list:
+                if isinstance(dec, ast.Call) and getattr(dec.func, "attr", "") == "parametrize":
+                    values = dec.args[1] if len(dec.args) > 1 else None
+                    if not isinstance(values, ast.List | ast.Tuple):
+                        return None
+                    cases *= len(values.elts)
+            total += cases
+    return total
+
+
+def doc_count_divergences(root: Path, automation: int, pytest_cases: int | None) -> list[str]:
+    """Contagens de testes citadas no README/docs que não batem com a contagem real."""
+    out: list[str] = []
+    for doc in [root / "README.md", *sorted((root / "docs").glob("*.md"))]:
+        if not doc.is_file():
+            continue
+        rel = doc.relative_to(root).as_posix()
+        for no, line in enumerate(doc.read_text(encoding="utf-8", errors="replace").splitlines(), start=1):
+            for m in DOC_AUTOMATION_COUNT_RE.finditer(line):
+                if int(m[1]) != automation:
+                    out.append(
+                        f"{rel}:{no}: cita {m[1]} testes de automação, mas o código tem {automation} "
+                        "(macros IMPLEMENT_*_AUTOMATION_TEST)"
+                    )
+            for m in DOC_PYTEST_COUNT_RE.finditer(line):
+                cited = m[1] or m[2]
+                if pytest_cases is not None and int(cited) != pytest_cases:
+                    out.append(f"{rel}:{no}: cita {cited} casos de pytest, mas tests/ tem {pytest_cases}")
+    return out
+
+
 def validate_header_stub(path: Path, needle: str, result: ValidationResult) -> None:
     text = path.read_text(encoding="utf-8")
     if needle not in text:
@@ -333,7 +477,9 @@ def validate_header_stub(path: Path, needle: str, result: ValidationResult) -> N
         result.fail(f"{path.name}: falta #pragma once")
 
 
-def run_validation(root: Path | None = None) -> ValidationResult:
+def run_validation(
+    root: Path | None = None, strict_docs: bool = False, strict_rpc: bool = True
+) -> ValidationResult:
     root = repo_root_from(root)
     result = ValidationResult()
 
@@ -395,6 +541,15 @@ def run_validation(root: Path | None = None) -> ValidationResult:
     for err in lint_cpp_tree(root):
         result.fail(err)
 
+    texts = cpp_texts(root)
+    tests = automation_tests(texts)
+    validate_automation_names(tests, result)
+    # Aviso até o C++ do repo ganhar WithValidation/_Validate nos RPCs de servidor; depois, vira erro por padrão.
+    validate_server_rpcs(texts, result.fail if strict_rpc else result.warn)
+    report_doc = result.fail if strict_docs else result.warn
+    for msg in doc_count_divergences(root, len(tests), pytest_case_count(root / "tests")):
+        report_doc(msg)
+
     return result
 
 
@@ -415,9 +570,22 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="Raiz do repo (default: pai de tools/)",
     )
+    parser.add_argument(
+        "--strict-docs",
+        action="store_true",
+        help="Contagens de testes citadas nos docs que divergem da real viram erro (default: aviso)",
+    )
+    parser.add_argument(
+        "--strict-rpc",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="UFUNCTION(Server) sem WithValidation/_Validate é erro (default); --no-strict-rpc vira aviso",
+    )
     args = parser.parse_args(argv)
     make_console_safe()
-    result = run_validation(args.root)
+    result = run_validation(args.root, strict_docs=args.strict_docs, strict_rpc=args.strict_rpc)
+    for warning in result.warnings:
+        print(f"  ! aviso: {warning}", file=sys.stderr)
     if result.ok():
         print("validate_plugin: OK")
         return 0

@@ -12,3 +12,7 @@ FName UCatalogItemDefinition::GetItemId() const
 {
 	return GetFName();
 }
+
+void UCatalogItemDefinition::OnUsed_Implementation(AActor* User) const
+{
+}

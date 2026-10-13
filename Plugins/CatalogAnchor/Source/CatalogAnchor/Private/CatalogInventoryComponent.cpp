@@ -22,6 +22,19 @@ namespace CatalogInventoryPrivate
 	/** Distância à frente do Pawn onde ServerDropItem solta o pickup (cm). */
 	constexpr float DropDistance = 100.f;
 
+	/** Quem "age" pelo inventário: o Pawn se o dono é um Controller (padrão Lyra), senão o próprio dono. */
+	AActor* GetActingActor(AActor* Owner)
+	{
+		if (const AController* OwnerController = Cast<AController>(Owner))
+		{
+			if (APawn* OwnerPawn = OwnerController->GetPawn())
+			{
+				return OwnerPawn;
+			}
+		}
+		return Owner;
+	}
+
 	UCatalogSaveSubsystem* FindSaveSubsystem(const UActorComponent* Component)
 	{
 		const UWorld* World = Component ? Component->GetWorld() : nullptr;
@@ -182,14 +195,34 @@ void UCatalogInventoryComponent::CollectStacks(const UCatalogItemDefinition* Ite
 	}
 }
 
-int32 UCatalogInventoryComponent::AddInternal(const UCatalogItemDefinition* Item, int32 Quantity)
+int32 UCatalogInventoryComponent::SimulateAdd(const UCatalogItemDefinition* Item, int32 Quantity, bool bEnforceWeight,
+	TArray<int32>& OutEntryIndices, TArray<int32>& OutStacks) const
+{
+	CollectStacks(Item, OutEntryIndices, OutStacks);
+
+	const int32 Allowed = bEnforceWeight
+		? FCatalogInventoryRules::MaxQuantityByWeight(GetTotalWeight(), MaxWeight, Item->Weight, Quantity)
+		: Quantity;
+	const int32 FreeSlots = FMath::Max(0, Capacity - InventoryList.Entries.Num());
+	return FCatalogInventoryRules::AddToStacks(OutStacks, Allowed, Item->MaxStackSize, FreeSlots);
+}
+
+int32 UCatalogInventoryComponent::GetAddableQuantity(const UCatalogItemDefinition* Item, int32 Quantity) const
+{
+	if (!Item || Quantity <= 0)
+	{
+		return 0;
+	}
+	TArray<int32> EntryIndices;
+	TArray<int32> Stacks;
+	return SimulateAdd(Item, Quantity, /*bEnforceWeight*/ true, EntryIndices, Stacks);
+}
+
+int32 UCatalogInventoryComponent::AddInternal(const UCatalogItemDefinition* Item, int32 Quantity, bool bEnforceWeight)
 {
 	TArray<int32> EntryIndices;
 	TArray<int32> Stacks;
-	CollectStacks(Item, EntryIndices, Stacks);
-
-	const int32 FreeSlots = FMath::Max(0, Capacity - InventoryList.Entries.Num());
-	const int32 Added = FCatalogInventoryRules::AddToStacks(Stacks, Quantity, Item->MaxStackSize, FreeSlots);
+	const int32 Added = SimulateAdd(Item, Quantity, bEnforceWeight, EntryIndices, Stacks);
 
 	for (int32 StackIndex = 0; StackIndex < Stacks.Num(); ++StackIndex)
 	{
@@ -225,7 +258,7 @@ int32 UCatalogInventoryComponent::AddItem(const UCatalogItemDefinition* Item, in
 		return 0;
 	}
 
-	const int32 Added = AddInternal(Item, Quantity);
+	const int32 Added = AddInternal(Item, Quantity, /*bEnforceWeight*/ true);
 	if (Added > 0)
 	{
 		OnInventoryChanged.Broadcast();
@@ -245,6 +278,16 @@ int32 UCatalogInventoryComponent::RemoveItem(const UCatalogItemDefinition* Item,
 		return 0;
 	}
 
+	const int32 Removed = RemoveInternal(Item, Quantity);
+	if (Removed > 0)
+	{
+		OnInventoryChanged.Broadcast();
+	}
+	return Removed;
+}
+
+int32 UCatalogInventoryComponent::RemoveInternal(const UCatalogItemDefinition* Item, int32 Quantity)
+{
 	TArray<int32> EntryIndices;
 	TArray<int32> Stacks;
 	CollectStacks(Item, EntryIndices, Stacks);
@@ -277,7 +320,6 @@ int32 UCatalogInventoryComponent::RemoveItem(const UCatalogItemDefinition* Item,
 		InventoryList.MarkArrayDirty();
 	}
 
-	OnInventoryChanged.Broadcast();
 	return Removed;
 }
 
@@ -315,21 +357,116 @@ TArray<FCatalogInventoryStack> UCatalogInventoryComponent::GetStacks() const
 	return Result;
 }
 
+TArray<FCatalogInventoryStack> UCatalogInventoryComponent::GetItemsByTag(FGameplayTag Tag) const
+{
+	TArray<FCatalogInventoryStack> Result;
+	if (!Tag.IsValid())
+	{
+		return Result;
+	}
+	for (const FCatalogInventoryEntry& Entry : InventoryList.Entries)
+	{
+		const UCatalogItemDefinition* Item = Entry.Item.Get();
+		if (Item && (Item->ItemTags.HasTag(Tag) || Item->Category.MatchesTag(Tag)))
+		{
+			FCatalogInventoryStack& Stack = Result.AddDefaulted_GetRef();
+			Stack.Item = Item;
+			Stack.Quantity = Entry.Quantity;
+		}
+	}
+	return Result;
+}
+
+float UCatalogInventoryComponent::GetTotalWeight() const
+{
+	double Total = 0.0;
+	for (const FCatalogInventoryEntry& Entry : InventoryList.Entries)
+	{
+		if (Entry.Item)
+		{
+			Total += static_cast<double>(Entry.Item->Weight) * Entry.Quantity;
+		}
+	}
+	return static_cast<float>(Total);
+}
+
+bool UCatalogInventoryComponent::UseItem(const UCatalogItemDefinition* Item, int32 Quantity)
+{
+	if (!Item || !HasInventoryAuthority(TEXT("UseItem")))
+	{
+		return false;
+	}
+	if (!FCatalogInventoryRules::CanUse(Item->bUsable, GetItemCount(Item), Quantity))
+	{
+		// Verbose: com latência a UI do cliente pode pedir um uso que o servidor já gastou.
+		UE_LOG(LogCatalogAnchor, Verbose, TEXT("UseItem recusado: Item=%s, Quantity=%d, usável=%d, tem=%d."),
+			*GetNameSafe(Item), Quantity, Item->bUsable, GetItemCount(Item));
+		return false;
+	}
+
+	// Consome antes dos efeitos: um OnUsed reentrante não gasta a mesma unidade duas vezes.
+	if (Item->bConsumeOnUse)
+	{
+		RemoveItem(Item, Quantity); // CanUse garantiu a quantidade
+	}
+	AActor* User = CatalogInventoryPrivate::GetActingActor(GetOwner());
+	for (int32 Use = 0; Use < Quantity; ++Use)
+	{
+		Item->OnUsed(User);
+	}
+	OnItemUsed.Broadcast(Item, Quantity);
+	return true;
+}
+
+bool UCatalogInventoryComponent::ServerUseItem_Validate(const UCatalogItemDefinition* Item, int32 Quantity)
+{
+	// Só o que um cliente legítimo nunca envia (derruba a conexão); "não tem"/"não usável" ficam no UseItem.
+	return Item != nullptr && Quantity >= 1 && Quantity <= FCatalogInventoryRules::MaxUseQuantity;
+}
+
+void UCatalogInventoryComponent::ServerUseItem_Implementation(const UCatalogItemDefinition* Item, int32 Quantity)
+{
+	UseItem(Item, Quantity); // UseItem valida tudo: o pedido do cliente não é confiável
+}
+
+bool UCatalogInventoryComponent::TransferTo(UCatalogInventoryComponent* Other, const UCatalogItemDefinition* Item, int32 Quantity)
+{
+	if (!Other || Other == this || !Item || Quantity <= 0)
+	{
+		UE_LOG(LogCatalogAnchor, Warning, TEXT("TransferTo ignorado: Other=%s, Item=%s, Quantity=%d."),
+			*GetNameSafe(Other), *GetNameSafe(Item), Quantity);
+		return false;
+	}
+	if (!HasInventoryAuthority(TEXT("TransferTo")) || !Other->HasInventoryAuthority(TEXT("TransferTo (destino)")))
+	{
+		return false;
+	}
+	// Tudo ou nada: valida origem e destino antes de mexer. Abaixo só há versões sem broadcast, então
+	// nenhum código de usuário roda entre a validação e a escrita e ela vale até o fim.
+	if (GetItemCount(Item) < Quantity || Other->GetAddableQuantity(Item, Quantity) < Quantity)
+	{
+		return false;
+	}
+
+	const int32 Removed = RemoveInternal(Item, Quantity);
+	Other->AddInternal(Item, Removed, /*bEnforceWeight*/ true);
+	OnInventoryChanged.Broadcast();
+	Other->OnInventoryChanged.Broadcast();
+	return true;
+}
+
+bool UCatalogInventoryComponent::ServerDropItem_Validate(const UCatalogItemDefinition* Item, int32 Quantity)
+{
+	return Item != nullptr && Quantity >= 1;
+}
+
 void UCatalogInventoryComponent::ServerDropItem_Implementation(const UCatalogItemDefinition* Item, int32 Quantity)
 {
 	UWorld* World = GetWorld();
-	const AActor* DropOrigin = GetOwner();
+	const AActor* DropOrigin = CatalogInventoryPrivate::GetActingActor(GetOwner()); // Controller: solta à frente do Pawn
 	if (!World || !DropOrigin || !DropPickupClass)
 	{
 		return;
-	}
-	// Inventário no Controller: solta à frente do Pawn, não na origem do Controller.
-	if (const AController* OwnerController = Cast<AController>(DropOrigin))
-	{
-		if (const APawn* OwnerPawn = OwnerController->GetPawn())
-		{
-			DropOrigin = OwnerPawn;
-		}
 	}
 
 	// RemoveItem valida Item/Quantity e só tira o que existe: o pedido do cliente não é confiável.
@@ -345,8 +482,8 @@ void UCatalogInventoryComponent::ServerDropItem_Implementation(const UCatalogIte
 		nullptr, nullptr, ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
 	if (!Pickup)
 	{
-		// Spawn falhou: devolve os itens em vez de sumir com eles.
-		AddInternal(Item, Removed);
+		// Spawn falhou: devolve os itens em vez de sumir com eles (sem enforçar peso: pode estar acima do máximo).
+		AddInternal(Item, Removed, /*bEnforceWeight*/ false);
 		OnInventoryChanged.Broadcast();
 		UE_LOG(LogCatalogAnchor, Warning, TEXT("ServerDropItem: falha ao gerar %s; itens devolvidos."), *GetNameSafe(DropPickupClass.Get()));
 		return;
@@ -399,8 +536,9 @@ void UCatalogInventoryComponent::ReadSaveData(const FCatalogSavePayload& Payload
 				*Slot.ItemId.ToString());
 			continue;
 		}
-		// AddInternal reempilha: absorve MaxStackSize/Capacity que mudaram desde o save.
-		const int32 Added = AddInternal(Item, Slot.Quantity);
+		// AddInternal reempilha: absorve MaxStackSize/Capacity que mudaram desde o save. Peso não enforça no load:
+		// MaxWeight reduzido não pode apagar itens do jogador (só barra novas entradas).
+		const int32 Added = AddInternal(Item, Slot.Quantity, /*bEnforceWeight*/ false);
 		if (Added < Slot.Quantity)
 		{
 			UE_LOG(LogCatalogAnchor, Warning, TEXT("Inventory load: sem espaço; %d de '%s' descartados."),

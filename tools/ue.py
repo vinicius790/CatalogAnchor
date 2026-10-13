@@ -6,6 +6,9 @@ default 5.8) > %ProgramData%\Epic\UnrealEngineLauncher\LauncherInstalled.dat (Ap
 > %ProgramFiles%\Epic Games\UE_<--version> (e %ProgramFiles(x86)%), onde o Launcher instala por padrão.
 A pasta é a raiz da instalação (a que contém Engine/), ex.: "C:/Program Files/Epic Games/UE_5.8".
 
+UE_SDKS_ROOT (opcional): se estiver no ambiente, o UBT/UAT herda e usa <UE_SDKS_ROOT>/HostWin64/Win64/VS2022 como
+toolchain MSVC portátil (gerado por tools/get_msvc.py), sem Visual Studio instalado; o ue.py não altera o ambiente.
+
 build-plugin: RunUAT BuildPlugin -> dist/CatalogAnchor (logs do UAT/UBT em <report-dir>/UAT).
 test: compila o target SampleCatalogEditor (Build.bat/Build.sh, log em <report-dir>/UBT.log), roda os testes
       CatalogAnchor no editor headless e lê <report-dir>/index.json; sai != 0 se algo falhou ou se nenhum teste rodou.

@@ -113,10 +113,13 @@ ASampleCatalogCharacter::ASampleCatalogCharacter()
 void ASampleCatalogCharacter::BeginPlay()
 {
 	Super::BeginPlay();
-	if (HasAuthority())
-	{
-		Health->OnDeath.AddDynamic(this, &ASampleCatalogCharacter::HandleDeath);
-	}
+	// Também nos clientes (o OnRep dispara OnDeath): a interação em andamento termina onde o input nasce.
+	Health->OnDeath.AddDynamic(this, &ASampleCatalogCharacter::HandleDeath);
+}
+
+bool ASampleCatalogCharacter::CanJumpInternal_Implementation() const
+{
+	return !Health->IsDead() && Super::CanJumpInternal_Implementation();
 }
 
 void ASampleCatalogCharacter::EnsureInputObjects()
@@ -284,11 +287,19 @@ void ASampleCatalogCharacter::InteractReleased()
 
 void ASampleCatalogCharacter::Dash()
 {
+	if (Health->IsDead())
+	{
+		return;
+	}
 	Abilities->TryActivateAbility(CatalogGameplayTags::Ability_Dash);
 }
 
 void ASampleCatalogCharacter::Melee()
 {
+	if (Health->IsDead())
+	{
+		return;
+	}
 	Abilities->TryActivateAbility(CatalogGameplayTags::Ability_Melee);
 }
 
@@ -322,6 +333,12 @@ void ASampleCatalogCharacter::UsePotion()
 	ServerUsePotion();
 }
 
+bool ASampleCatalogCharacter::ServerUsePotion_Validate()
+{
+	// Falso derruba o cliente: vida/inventário do momento (morto, cheio, sem poção) ficam para a _Implementation.
+	return Health && Inventory;
+}
+
 void ASampleCatalogCharacter::ServerUsePotion_Implementation()
 {
 	using namespace SampleCharacterPrivate;
@@ -341,6 +358,10 @@ void ASampleCatalogCharacter::HandleDeath(AActor* Killer)
 {
 	// Habilidades e poção já recusam morto no servidor; MOVE_None cobre pulo/movimento do cliente.
 	Interaction->EndInteract();
+	if (!HasAuthority())
+	{
+		return;
+	}
 	GetCharacterMovement()->StopMovementImmediately();
 	GetCharacterMovement()->DisableMovement();
 	GetWorldTimerManager().SetTimer(RespawnTimer, this, &ASampleCatalogCharacter::Respawn, SampleCharacterPrivate::RespawnSeconds, false);

@@ -5,8 +5,8 @@
 #include "Modules/ModuleManager.h"
 
 /**
- * Módulo Editor: validadores de Data Validation (itens, habilidades, saves) e o menu
- * Tools → Catalog Anchor → Validate Catalog Assets.
+ * Módulo Editor: validadores de Data Validation (itens, habilidades, saves), factories do Content Browser
+ * (categoria Catalog Anchor) e o menu Tools → Catalog Anchor → Validate / Report Catalog Assets.
  */
 class FCatalogAnchorEditorModule : public IModuleInterface
 {

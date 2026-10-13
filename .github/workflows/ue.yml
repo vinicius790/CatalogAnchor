@@ -2,7 +2,8 @@
 # Precisa de runner self-hosted com UE 5.8, Visual Studio 2022 17.14+ (MSVC 14.44) ou 2026 (14.50),
 # Windows SDK >= 10.0.19041 e Python 3.10+ (launcher "py"). Labels: self-hosted, windows, ue-5.8.
 # Só roda com a variável de repositório UE_RUNNER_ENABLED=true (ou disparo manual), para não ficar
-# na fila em forks/repos sem esse runner. Variável opcional UE_ROOT: raiz da engine (default: registro ou LauncherInstalled.dat).
+# na fila em forks/repos sem esse runner. Variável opcional UE_ROOT: raiz da engine (default: registro, LauncherInstalled.dat
+# ou Program Files/Epic Games/UE_5.8). Sem Visual Studio no runner: defina UE_SDKS_ROOT (tools/get_msvc.py); o UBT herda.
 name: UE
 
 on:

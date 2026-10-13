@@ -1,0 +1,59 @@
+name: Relatar bug
+description: Algo no plugin CatalogAnchor não funciona como esperado.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Antes de abrir: procure em issues existentes e leia o `LIMITATIONS.md`.
+        Vulnerabilidade de segurança não vai aqui: veja o `SECURITY.md`.
+  - type: input
+    id: plugin-version
+    attributes:
+      label: Versão do plugin
+      description: "`VersionName` do `CatalogAnchor.uplugin` ou a tag."
+      placeholder: "0.4.0"
+    validations:
+      required: true
+  - type: input
+    id: ue-version
+    attributes:
+      label: Versão da Unreal Engine
+      placeholder: "5.8.3"
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Plataforma
+      options:
+        - Windows
+        - Linux
+        - macOS
+        - Outra
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: O que aconteceu
+      description: Comportamento observado e o que você esperava.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Passos para reproduzir
+      description: Do menor caso possível. Se der, use o `SampleProject`.
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log / saída de teste
+      description: Trecho do log do editor (`LogCatalogAnchor`) ou da saída de `tools/ue.py test`.
+      render: text

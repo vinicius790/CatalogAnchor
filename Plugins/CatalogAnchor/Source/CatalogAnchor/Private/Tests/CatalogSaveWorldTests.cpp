@@ -2,6 +2,7 @@
 #include "CatalogInventoryComponent.h"
 #include "CatalogItemDefinition.h"
 #include "CatalogSaveSubsystem.h"
+#include "CatalogTestGuards.h"
 #include "CatalogSaveTypes.h"
 #include "Engine/Engine.h"
 #include "Engine/GameInstance.h"
@@ -111,6 +112,10 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCatalogSaveReRegisterTest, "CatalogAnchor.Save
 bool FCatalogSaveReRegisterTest::RunTest(const FString& Parameters)
 {
 	using namespace CatalogSaveWorldTestsPrivate;
+	if (CatalogTestGuards::ShouldSkipDuringPIE(*this))
+	{
+		return true;
+	}
 	FTestWorld TestWorld;
 	if (!TestNotNull(TEXT("subsystem de save"), TestWorld.Save))
 	{
@@ -144,6 +149,10 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCatalogSaveLoadGenerationTest, "CatalogAnchor.
 bool FCatalogSaveLoadGenerationTest::RunTest(const FString& Parameters)
 {
 	using namespace CatalogSaveWorldTestsPrivate;
+	if (CatalogTestGuards::ShouldSkipDuringPIE(*this))
+	{
+		return true;
+	}
 	FTestWorld TestWorld;
 	if (!TestNotNull(TEXT("subsystem de save"), TestWorld.Save))
 	{
@@ -186,6 +195,10 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCatalogSaveRespawnTest, "CatalogAnchor.Save.Re
 bool FCatalogSaveRespawnTest::RunTest(const FString& Parameters)
 {
 	using namespace CatalogSaveWorldTestsPrivate;
+	if (CatalogTestGuards::ShouldSkipDuringPIE(*this))
+	{
+		return true;
+	}
 	FTestWorld TestWorld;
 	if (!TestNotNull(TEXT("subsystem de save"), TestWorld.Save))
 	{
@@ -253,6 +266,10 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCatalogInventoryNonPlayerOwnerTest, "CatalogAn
 bool FCatalogInventoryNonPlayerOwnerTest::RunTest(const FString& Parameters)
 {
 	using namespace CatalogSaveWorldTestsPrivate;
+	if (CatalogTestGuards::ShouldSkipDuringPIE(*this))
+	{
+		return true;
+	}
 	FTestWorld TestWorld;
 	if (!TestNotNull(TEXT("subsystem de save"), TestWorld.Save))
 	{

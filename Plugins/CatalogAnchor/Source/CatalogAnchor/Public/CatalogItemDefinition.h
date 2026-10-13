@@ -7,6 +7,7 @@
 #include "UObject/PrimaryAssetId.h"
 #include "CatalogItemDefinition.generated.h"
 
+class AActor;
 class UTexture2D;
 
 /**
@@ -46,6 +47,29 @@ public:
 	/** Tags livres para filtros de gameplay/UI (ex.: Item.Consumable). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Catalog|Inventory")
 	FGameplayTagContainer ItemTags;
+
+	/** Categoria principal (ex.: Item.Category.Consumable) para filtros e abas de UI; vazia = sem categoria. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Catalog|Inventory")
+	FGameplayTag Category;
+
+	/** Peso por unidade; soma contra UCatalogInventoryComponent::MaxWeight (0 = não pesa). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Catalog|Inventory", meta = (ClampMin = "0"))
+	float Weight = 0.f;
+
+	/** Pode ser usado por UCatalogInventoryComponent::UseItem. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Catalog|Inventory|Use")
+	bool bUsable = false;
+
+	/** Cada uso consome 1 unidade; quem consome é o UseItem (validado no servidor), não o OnUsed. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Catalog|Inventory|Use", meta = (EditCondition = "bUsable"))
+	bool bConsumeOnUse = true;
+
+	/**
+	 * Efeito de UMA unidade usada (chamado no servidor, já depois do consumo). User é o Pawn (ou o dono do
+	 * inventário, se não houver Pawn). Padrão: nada. Const: a definição é asset compartilhado, não guarda estado.
+	 */
+	UFUNCTION(BlueprintNativeEvent, Category = "Catalog|Inventory")
+	void OnUsed(AActor* User) const;
 
 	virtual FPrimaryAssetId GetPrimaryAssetId() const override;
 

@@ -77,7 +77,8 @@ public:
 protected:
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 
-	UFUNCTION(Server, Reliable)
+	/** _Validate recusa tag inválida (cliente adulterado: desconecta). TryActivateAbility já filtra a tag antes. */
+	UFUNCTION(Server, Reliable, WithValidation)
 	void ServerTryActivateAbility(FGameplayTag AbilityTag);
 
 	/** Aviso de falha ao dono; não confiável porque é só feedback. */

@@ -1,8 +1,11 @@
 ﻿// Copyright 2026 Geraliza Castlevania. MIT License.
 #include "CatalogHealthTestListener.h"
+#include "CatalogTestGuards.h"
 #include "CatalogAbility.h"
 #include "CatalogHealthComponent.h"
+#include "Components/CapsuleComponent.h"
 #include "Engine/Engine.h"
+#include "Engine/CollisionProfile.h"
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
 #include "GameFramework/DamageType.h"
@@ -37,6 +40,12 @@ void UCatalogHealthTestListener::HandleDeath(AActor* Killer)
 	{
 		Target->Destroy();
 	}
+}
+
+void UCatalogHealthTestListener::HandleAnyDamage(AActor* DamagedActor, float Damage, const UDamageType* DamageType,
+	AController* InstigatedBy, AActor* DamageCauser)
+{
+	++AnyDamageCount;
 }
 
 #if WITH_DEV_AUTOMATION_TESTS
@@ -104,6 +113,10 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCatalogHealthApplyDamageEventsTest, "CatalogAn
 bool FCatalogHealthApplyDamageEventsTest::RunTest(const FString& Parameters)
 {
 	using namespace CatalogHealthWorldTestsImpl;
+	if (CatalogTestGuards::ShouldSkipDuringPIE(*this))
+	{
+		return true;
+	}
 	if (!TestNotNull(TEXT("GEngine"), GEngine))
 	{
 		return false;
@@ -148,6 +161,10 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCatalogHealthResetRespawnTest, "CatalogAnchor.
 bool FCatalogHealthResetRespawnTest::RunTest(const FString& Parameters)
 {
 	using namespace CatalogHealthWorldTestsImpl;
+	if (CatalogTestGuards::ShouldSkipDuringPIE(*this))
+	{
+		return true;
+	}
 	if (!TestNotNull(TEXT("GEngine"), GEngine))
 	{
 		return false;
@@ -181,6 +198,10 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCatalogHealthReentrantDamageTest, "CatalogAnch
 bool FCatalogHealthReentrantDamageTest::RunTest(const FString& Parameters)
 {
 	using namespace CatalogHealthWorldTestsImpl;
+	if (CatalogTestGuards::ShouldSkipDuringPIE(*this))
+	{
+		return true;
+	}
 	if (!TestNotNull(TEXT("GEngine"), GEngine))
 	{
 		return false;
@@ -204,6 +225,10 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCatalogHealthDestroyedInCallbackTest, "Catalog
 bool FCatalogHealthDestroyedInCallbackTest::RunTest(const FString& Parameters)
 {
 	using namespace CatalogHealthWorldTestsImpl;
+	if (CatalogTestGuards::ShouldSkipDuringPIE(*this))
+	{
+		return true;
+	}
 	if (!TestNotNull(TEXT("GEngine"), GEngine))
 	{
 		return false;
@@ -236,6 +261,10 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCatalogHealthCanBeDamagedTest, "CatalogAnchor.
 bool FCatalogHealthCanBeDamagedTest::RunTest(const FString& Parameters)
 {
 	using namespace CatalogHealthWorldTestsImpl;
+	if (CatalogTestGuards::ShouldSkipDuringPIE(*this))
+	{
+		return true;
+	}
 	if (!TestNotNull(TEXT("GEngine"), GEngine))
 	{
 		return false;
@@ -260,6 +289,10 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCatalogHealthSetHealthTest, "CatalogAnchor.Hea
 bool FCatalogHealthSetHealthTest::RunTest(const FString& Parameters)
 {
 	using namespace CatalogHealthWorldTestsImpl;
+	if (CatalogTestGuards::ShouldSkipDuringPIE(*this))
+	{
+		return true;
+	}
 	if (!TestNotNull(TEXT("GEngine"), GEngine))
 	{
 		return false;
@@ -301,6 +334,10 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCatalogAbilityDeadAvatarTest, "CatalogAnchor.A
 bool FCatalogAbilityDeadAvatarTest::RunTest(const FString& Parameters)
 {
 	using namespace CatalogHealthWorldTestsImpl;
+	if (CatalogTestGuards::ShouldSkipDuringPIE(*this))
+	{
+		return true;
+	}
 	if (!TestNotNull(TEXT("GEngine"), GEngine))
 	{
 		return false;
@@ -319,6 +356,109 @@ bool FCatalogAbilityDeadAvatarTest::RunTest(const FString& Parameters)
 
 	F.Health->ResetHealth();
 	TestTrue(TEXT("após respawn: ativa de novo"), Ability->CanActivate(F.Actor));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCatalogHealthFirstReplicationTest, "CatalogAnchor.Health.ClientFirstReplicationNoFalseDelta",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::CommandletContext | EAutomationTestFlags::ProductFilter)
+
+bool FCatalogHealthFirstReplicationTest::RunTest(const FString& Parameters)
+{
+	using namespace CatalogHealthWorldTestsImpl;
+	if (CatalogTestGuards::ShouldSkipDuringPIE(*this))
+	{
+		return true;
+	}
+	if (!TestNotNull(TEXT("GEngine"), GEngine))
+	{
+		return false;
+	}
+	FScopedTestWorld TestWorld;
+	AActor* Actor = TestWorld.World->SpawnActor<AActor>();
+	UCatalogHealthTestListener* L = NewObject<UCatalogHealthTestListener>(GetTransientPackage());
+
+	// Sem RegisterComponent: não é autoridade e Health segue no default (100), como no cliente antes da rede.
+	const auto MakeClient = [&](float MaxHealth)
+	{
+		UCatalogHealthTestComponent* Client = NewObject<UCatalogHealthTestComponent>(Actor);
+		Client->MaxHealth = MaxHealth;
+		Client->OnHealthChanged.AddDynamic(L, &UCatalogHealthTestListener::HandleHealthChanged);
+		Client->OnDeath.AddDynamic(L, &UCatalogHealthTestListener::HandleDeath);
+		return Client;
+	};
+
+	// MaxHealth != 100: o servidor replica 250; o default local 100 não pode virar delta +150.
+	UCatalogHealthTestComponent* Client = MakeClient(250.f);
+	Client->SimulateReplication(250.f);
+	TestEqual(TEXT("1a replicação: um OnHealthChanged"), L->ChangedCount, 1);
+	TestEqual(TEXT("1a replicação: vida do servidor"), L->LastHealth, 250.f);
+	TestEqual(TEXT("1a replicação: sem delta falso"), L->LastDelta, 0.f);
+	TestEqual(TEXT("1a replicação: vivo, sem OnDeath"), L->DeathCount, 0);
+
+	Client->SimulateReplication(200.f);
+	TestEqual(TEXT("2a replicação: delta real"), L->LastDelta, -50.f);
+	Client->SimulateReplication(0.f);
+	TestEqual(TEXT("morte replicada: OnDeath"), L->DeathCount, 1);
+
+	// Quem entra depois com o ator já morto: OnDeath (sem Killer) na 1a replicação.
+	UCatalogHealthTestComponent* Late = MakeClient(250.f);
+	Late->SimulateReplication(0.f);
+	TestEqual(TEXT("entrou morto: OnHealthChanged sem delta"), L->LastDelta, 0.f);
+	TestEqual(TEXT("entrou morto: OnDeath"), L->DeathCount, 2);
+	TestTrue(TEXT("entrou morto: IsDead"), Late->IsDead());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCatalogAbilityMeleeDestroyedTargetTest, "CatalogAnchor.Abilities.MeleeSweepSkipsTargetDestroyedInSweep",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::CommandletContext | EAutomationTestFlags::ProductFilter)
+
+bool FCatalogAbilityMeleeDestroyedTargetTest::RunTest(const FString& Parameters)
+{
+	using namespace CatalogHealthWorldTestsImpl;
+	if (CatalogTestGuards::ShouldSkipDuringPIE(*this))
+	{
+		return true;
+	}
+	if (!TestNotNull(TEXT("GEngine"), GEngine))
+	{
+		return false;
+	}
+	FScopedTestWorld TestWorld;
+	AActor* Avatar = TestWorld.World->SpawnActor<AActor>();
+
+	// Alvos em fila à frente do avatar (+X); A é atingido antes de B (hits ordenados por distância).
+	const auto SpawnTarget = [&](float X)
+	{
+		FHealthFixture Fixture = SpawnWithHealth(TestWorld.World, 100.f);
+		UCapsuleComponent* Capsule = NewObject<UCapsuleComponent>(Fixture.Actor);
+		Capsule->InitCapsuleSize(20.f, 40.f);
+		Capsule->SetCollisionProfileName(UCollisionProfile::Pawn_ProfileName);
+		Fixture.Actor->SetRootComponent(Capsule);
+		Capsule->RegisterComponent();
+		Fixture.Actor->SetActorLocation(FVector(X, 0.f, 0.f));
+		Fixture.Actor->OnTakeAnyDamage.AddDynamic(Fixture.Listener, &UCatalogHealthTestListener::HandleAnyDamage);
+		return Fixture;
+	};
+	const FHealthFixture A = SpawnTarget(200.f);
+	const FHealthFixture B = SpawnTarget(300.f);
+
+	UCatalogAbility_MeleeSweep* Ability = NewObject<UCatalogAbility_MeleeSweep>(GetTransientPackage());
+	Ability->Range = 400.f;
+	Ability->Radius = 50.f;
+	Ability->Damage = 10.f;
+
+	// Controle: sem a destruição, o golpe atinge os dois (o cenário de colisão do teste é válido).
+	TestTrue(TEXT("Activate"), Ability->Activate(Avatar));
+	TestEqual(TEXT("controle: A atingido"), A.Listener->AnyDamageCount, 1);
+	TestEqual(TEXT("controle: B atingido"), B.Listener->AnyDamageCount, 1);
+
+	// O dano em A destrói B no meio da varredura: B não pode receber ApplyDamage depois de destruído.
+	A.Listener->Target = B.Actor;
+	A.Listener->bDestroyOnChange = true;
+	Ability->Activate(Avatar);
+	TestEqual(TEXT("A atingido de novo"), A.Listener->AnyDamageCount, 2);
+	TestFalse(TEXT("B destruído durante a varredura"), IsValid(B.Actor));
+	TestEqual(TEXT("B destruído não recebe dano"), B.Listener->AnyDamageCount, 1);
 	return true;
 }
 

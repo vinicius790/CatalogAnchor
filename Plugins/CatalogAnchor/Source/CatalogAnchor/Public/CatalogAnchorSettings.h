@@ -42,6 +42,14 @@ public:
 	UPROPERTY(config, EditAnywhere, Category = "Save")
 	FName AutosaveSlotName = TEXT("Autosave");
 
+	/**
+	 * Quantas versões anteriores de cada slot o save mantém (`<slot>_bak`, `<slot>_bak2`...).
+	 * Um slot corrompido (arquivo ilegível ou CRC que não confere) é lido do backup mais novo íntegro.
+	 * 0 = sem backup nem fallback.
+	 */
+	UPROPERTY(config, EditAnywhere, Category = "Save", meta = (ClampMin = "0", ClampMax = "9"))
+	int32 BackupCount = 1;
+
 	// --- Inventory ---
 
 	/** Capacidade inicial (número de pilhas) de cada UCatalogInventoryComponent. */

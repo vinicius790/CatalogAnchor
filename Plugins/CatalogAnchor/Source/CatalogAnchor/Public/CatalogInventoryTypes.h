@@ -93,4 +93,16 @@ struct CATALOGANCHOR_API FCatalogInventoryRules
 	 * Pilhas que chegam a 0 ficam no array; o chamador as apaga. Retorna quanto saiu.
 	 */
 	static int32 RemoveFromStacks(TArray<int32>& InOutStacks, int32 Quantity);
+
+	/** Máximo de unidades por UseItem: cada uma dispara OnUsed, então um Quantity absurdo vindo de RPC não trava o servidor. */
+	static constexpr int32 MaxUseQuantity = 100;
+
+	/**
+	 * Quanto de Quantity cabe sem passar de MaxWeight. MaxWeight ou UnitWeight <= 0 = sem limite.
+	 * Peso atual já acima do máximo (MaxWeight reduzido depois do save) devolve 0 até aliviar.
+	 */
+	static int32 MaxQuantityByWeight(float CurrentWeight, float MaxWeight, float UnitWeight, int32 Quantity);
+
+	/** Uso válido: item usável, 1..MaxUseQuantity unidades e todas presentes (tudo ou nada). */
+	static bool CanUse(bool bUsable, int32 Owned, int32 Quantity);
 };

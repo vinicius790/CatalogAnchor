@@ -3,6 +3,7 @@
 #include "Tests/AutomationCommon.h"
 #include "CatalogInteractionComponent.h"
 #include "CatalogPickupActor.h"
+#include "CatalogTestGuards.h"
 #include "Camera/CameraActor.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
@@ -92,6 +93,10 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCatalogInteractionWorldOwnersTest, "CatalogAnc
 bool FCatalogInteractionWorldOwnersTest::RunTest(const FString& Parameters)
 {
 	using namespace CatalogInteractionWorldTestsPrivate;
+	if (CatalogTestGuards::ShouldSkipDuringPIE(*this))
+	{
+		return true;
+	}
 
 	// Destrói mundo e FWorldContext ao sair do escopo.
 	FTestWorldWrapper WorldWrapper;

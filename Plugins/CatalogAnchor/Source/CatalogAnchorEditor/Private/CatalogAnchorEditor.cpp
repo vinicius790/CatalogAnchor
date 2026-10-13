@@ -4,7 +4,9 @@
 #include "AssetRegistry/IAssetRegistry.h"
 #include "CatalogAbilityDefinition.h"
 #include "CatalogAnchor.h"
+#include "CatalogDefinitionValidators.h"
 #include "CatalogItemDefinition.h"
+#include "CatalogSaveDataValidator.h"
 #include "CatalogSaveTemplate.h"
 #include "Editor.h"
 #include "EditorValidatorSubsystem.h"
@@ -42,32 +44,37 @@ namespace CatalogAnchorEditorPrivate
 		}
 	}
 
+	/** false (e avisa) enquanto o Asset Registry indexa: resultado parcial enganaria ("0 inválidos" sem o scan terminar). */
+	static bool IsRegistryReady(const IAssetRegistry& AssetRegistry)
+	{
+		if (AssetRegistry.IsLoadingAssets())
+		{
+			NotifyCatalogValidation(LOCTEXT("RegistryBusy",
+				"Catalog Anchor: o Asset Registry ainda está indexando o projeto; tente de novo em instantes."), false);
+			return false;
+		}
+		return true;
+	}
+
+	static TArray<FAssetData> GatherAssets(const IAssetRegistry& AssetRegistry, const UClass* Class)
+	{
+		TArray<FAssetData> Assets;
+		AssetRegistry.GetAssetsByClass(Class->GetClassPathName(), Assets, /*bSearchSubClasses*/ true);
+		return Assets;
+	}
+
 	/** Valida todos os itens, habilidades e templates de save do projeto (detalhes no Message Log). */
 	static void ValidateCatalogAssets()
 	{
 		IAssetRegistry& AssetRegistry = IAssetRegistry::GetChecked();
-		if (AssetRegistry.IsLoadingAssets())
+		if (!IsRegistryReady(AssetRegistry))
 		{
-			// Resultado parcial enganaria: "0 inválidos" só porque o scan não terminou.
-			NotifyCatalogValidation(LOCTEXT("RegistryBusy",
-				"Catalog Anchor: o Asset Registry ainda está indexando o projeto; tente de novo em instantes."), false);
 			return;
 		}
 
-		const UClass* const CatalogClasses[] =
-		{
-			UCatalogItemDefinition::StaticClass(),
-			UCatalogAbilityDefinition::StaticClass(),
-			UCatalogSaveTemplate::StaticClass(),
-		};
-
-		TArray<FAssetData> Assets;
-		for (const UClass* Class : CatalogClasses)
-		{
-			TArray<FAssetData> ClassAssets;
-			AssetRegistry.GetAssetsByClass(Class->GetClassPathName(), ClassAssets, /*bSearchSubClasses*/ true);
-			Assets.Append(ClassAssets);
-		}
+		TArray<FAssetData> Assets = GatherAssets(AssetRegistry, UCatalogItemDefinition::StaticClass());
+		Assets.Append(GatherAssets(AssetRegistry, UCatalogAbilityDefinition::StaticClass()));
+		Assets.Append(GatherAssets(AssetRegistry, UCatalogSaveTemplate::StaticClass()));
 
 		if (Assets.Num() == 0)
 		{
@@ -98,6 +105,85 @@ namespace CatalogAnchorEditorPrivate
 			Results.NumChecked, Results.NumValid, Results.NumInvalid, Results.NumWarnings, Results.NumSkipped);
 		NotifyCatalogValidation(Summary, Results.NumInvalid == 0);
 	}
+
+	/**
+	 * Relatório no Output Log: contagem por tipo e cada problema (mesmos validadores, sem o Message Log).
+	 * Carrega todos os assets do catálogo; para só o resultado use Validate Catalog Assets.
+	 */
+	static void ReportCatalogAssets()
+	{
+		IAssetRegistry& AssetRegistry = IAssetRegistry::GetChecked();
+		if (!IsRegistryReady(AssetRegistry))
+		{
+			return;
+		}
+
+		const TArray<FAssetData> Items = GatherAssets(AssetRegistry, UCatalogItemDefinition::StaticClass());
+		const TArray<FAssetData> Abilities = GatherAssets(AssetRegistry, UCatalogAbilityDefinition::StaticClass());
+		const TArray<FAssetData> Saves = GatherAssets(AssetRegistry, UCatalogSaveTemplate::StaticClass());
+
+		UE_LOG(LogCatalogAnchor, Display, TEXT("Catalog Anchor — relatório: %d item(ns), %d habilidade(s), %d template(s) de save."),
+			Items.Num(), Abilities.Num(), Saves.Num());
+
+		int32 NumErrors = 0;
+		int32 NumWarnings = 0;
+
+		for (const TArray<FAssetData>* Group : { &Items, &Abilities, &Saves })
+		{
+			for (const FAssetData& Asset : *Group)
+			{
+				const UObject* Object = Asset.GetAsset();
+				FCatalogValidationIssues Issues;
+				if (const UCatalogItemDefinition* Item = Cast<UCatalogItemDefinition>(Object))
+				{
+					Issues = UCatalogItemDefinitionValidator::GetIssues(*Item);
+				}
+				else if (const UCatalogAbilityDefinition* Ability = Cast<UCatalogAbilityDefinition>(Object))
+				{
+					Issues = UCatalogAbilityDefinitionValidator::GetIssues(*Ability);
+				}
+				else if (const UCatalogSaveTemplate* Template = Cast<UCatalogSaveTemplate>(Object))
+				{
+					Issues = UCatalogSaveDataValidator::GetIssues(*Template);
+				}
+				else
+				{
+					Issues.Errors.Add(LOCTEXT("ReportLoadFailed", "CatalogAnchor: o asset não carregou."));
+				}
+
+				for (const FText& Error : Issues.Errors)
+				{
+					UE_LOG(LogCatalogAnchor, Error, TEXT("  [erro] %s: %s"), *Asset.GetObjectPathString(), *Error.ToString());
+				}
+				for (const FText& Warning : Issues.Warnings)
+				{
+					UE_LOG(LogCatalogAnchor, Warning, TEXT("  [aviso] %s: %s"), *Asset.GetObjectPathString(), *Warning.ToString());
+				}
+				NumErrors += Issues.Errors.Num();
+				NumWarnings += Issues.Warnings.Num();
+			}
+		}
+
+		// Duplicata entre pastas só aparece olhando o conjunto (itens e habilidades se identificam pelo nome).
+		for (const TArray<FAssetData>* Group : { &Items, &Abilities })
+		{
+			for (const TPair<FName, TArray<FName>>& Duplicate : CatalogFindDuplicateAssetNames(*Group))
+			{
+				TArray<FString> Packages;
+				for (const FName Package : Duplicate.Value)
+				{
+					Packages.Add(Package.ToString());
+				}
+				UE_LOG(LogCatalogAnchor, Error, TEXT("  [erro] nome '%s' (ItemId/PrimaryAssetId) repetido em: %s"),
+					*Duplicate.Key.ToString(), *FString::Join(Packages, TEXT(", ")));
+				++NumErrors;
+			}
+		}
+
+		NotifyCatalogValidation(FText::Format(
+			LOCTEXT("ReportSummary", "Catalog Anchor: {0} item(ns), {1} habilidade(s), {2} save(s) — {3} erro(s), {4} aviso(s). Detalhes no Output Log."),
+			Items.Num(), Abilities.Num(), Saves.Num(), NumErrors, NumWarnings), NumErrors == 0);
+	}
 }
 
 void FCatalogAnchorEditorModule::StartupModule()
@@ -126,6 +212,13 @@ void FCatalogAnchorEditorModule::RegisterMenus()
 		LOCTEXT("ValidateTooltip", "Roda o Data Validation em todos os itens, habilidades e templates de save do Catalog Anchor."),
 		FSlateIcon(),
 		FUIAction(FExecuteAction::CreateStatic(&CatalogAnchorEditorPrivate::ValidateCatalogAssets)),
+		EUserInterfaceActionType::Button,
+		NAME_None);
+	Section.AddMenuEntry("CatalogAnchor_ReportAssets",
+		LOCTEXT("ReportLabel", "Report Catalog Assets"),
+		LOCTEXT("ReportTooltip", "Escreve no Output Log a contagem de itens, habilidades e templates de save e cada problema encontrado."),
+		FSlateIcon(),
+		FUIAction(FExecuteAction::CreateStatic(&CatalogAnchorEditorPrivate::ReportCatalogAssets)),
 		EUserInterfaceActionType::Button,
 		NAME_None);
 }

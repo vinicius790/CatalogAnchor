@@ -8,12 +8,15 @@
 #include "Engine/World.h"
 #include "HAL/PlatformTime.h"
 #include "Kismet/GameplayStatics.h"
+#include "PlatformFeatures.h"
+#include "SaveGameSystem.h"
 #include "TimerManager.h"
 
 namespace CatalogSaveIO
 {
 	constexpr int32 MaxSlotNameLength = 128;
 	constexpr int32 SaveUserIndex = 0;
+	constexpr int32 MaxBackupCount = 9;
 
 	// FName compara sem caixa, mas ToString() pode devolver qualquer grafia já registrada
 	// (em builds sem WITH_CASE_PRESERVING_NAME). Minúsculas = o mesmo arquivo em toda plataforma.
@@ -22,15 +25,90 @@ namespace CatalogSaveIO
 		return SlotName.ToString().ToLower();
 	}
 
+	// 1 = <slot>_bak (o mais novo), 2 = <slot>_bak2...
+	FString BackupFileName(FName SlotName, int32 BackupIndex)
+	{
+		return BackupIndex <= 1 ? SlotFileName(SlotName) + TEXT("_bak")
+			: FString::Printf(TEXT("%s_bak%d"), *SlotFileName(SlotName), BackupIndex);
+	}
+
+	int32 ConfiguredBackupCount()
+	{
+		return FMath::Clamp(GetDefault<UCatalogAnchorSettings>()->BackupCount, 0, MaxBackupCount);
+	}
+
+	// Termina em "_bak" ou "_bak"+dígitos: nome de backup, que um slot do jogador não pode ter.
+	bool IsBackupName(const FString& Slot)
+	{
+		const int32 Tag = Slot.Find(TEXT("_bak"), ESearchCase::IgnoreCase, ESearchDir::FromEnd);
+		if (Tag == INDEX_NONE)
+		{
+			return false;
+		}
+		for (int32 Index = Tag + 4; Index < Slot.Len(); ++Index)
+		{
+			if (!FChar::IsDigit(Slot[Index]))
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+
 	UCatalogSaveGame* NewSaveObject(const FCatalogSavePayload& Payload)
 	{
 		UCatalogSaveGame* SaveObject = NewObject<UCatalogSaveGame>();
 		SaveObject->Payload = Payload;
+		SaveObject->PayloadCrc = CatalogComputePayloadCrc(Payload);
 		return SaveObject;
+	}
+
+	// CRC 0 = arquivo anterior ao CRC: não há o que conferir.
+	bool IsIntact(const UCatalogSaveGame& Envelope)
+	{
+		return Envelope.PayloadCrc == 0 || Envelope.PayloadCrc == CatalogComputePayloadCrc(Envelope.Payload);
+	}
+
+	// Só lê bytes se o arquivo existe: o backend genérico loga Error ao abrir arquivo ausente.
+	bool TryLoadBytes(const FString& FileName, TArray<uint8>& OutBytes)
+	{
+		return UGameplayStatics::DoesSaveGameExist(FileName, SaveUserIndex)
+			&& UGameplayStatics::LoadDataFromSlot(OutBytes, FileName, SaveUserIndex);
+	}
+
+	// Desloca <slot> -> _bak -> _bak2... Só se o arquivo atual confere: um corrompido não vira backup
+	// nem empurra um bom para fora. Bytes crus, sem reserializar.
+	void RotateBackups(FName SlotName)
+	{
+		const int32 Count = ConfiguredBackupCount();
+		TArray<uint8> Current;
+		if (Count <= 0 || !TryLoadBytes(SlotFileName(SlotName), Current))
+		{
+			return; // sem backup configurado, ou slot novo
+		}
+		const UCatalogSaveGame* Envelope = Cast<UCatalogSaveGame>(UGameplayStatics::LoadGameFromMemory(Current));
+		if (!Envelope || !IsIntact(*Envelope))
+		{
+			UE_LOG(LogCatalogAnchor, Warning, TEXT("CatalogSave: slot '%s' atual está corrompido; não vira backup."), *SlotName.ToString());
+			return;
+		}
+		for (int32 Index = Count; Index > 1; --Index)
+		{
+			TArray<uint8> Older;
+			if (TryLoadBytes(BackupFileName(SlotName, Index - 1), Older))
+			{
+				UGameplayStatics::SaveDataToSlot(Older, BackupFileName(SlotName, Index), SaveUserIndex);
+			}
+		}
+		if (!UGameplayStatics::SaveDataToSlot(Current, BackupFileName(SlotName, 1), SaveUserIndex))
+		{
+			UE_LOG(LogCatalogAnchor, Warning, TEXT("CatalogSave: falha ao gravar o backup do slot '%s'."), *SlotName.ToString());
+		}
 	}
 
 	bool WriteToDisk(const FCatalogSavePayload& Payload, FName SlotName)
 	{
+		RotateBackups(SlotName);
 		if (!UGameplayStatics::SaveGameToSlot(NewSaveObject(Payload), SlotFileName(SlotName), SaveUserIndex))
 		{
 			UE_LOG(LogCatalogAnchor, Error, TEXT("CatalogSave: falha ao gravar o slot '%s'."), *SlotName.ToString());
@@ -40,25 +118,77 @@ namespace CatalogSaveIO
 		return true;
 	}
 
-	// Migra uma cópia: OutPayload só muda se a leitura e a migração derem certo.
-	bool ExtractMigratedPayload(const USaveGame* Loaded, const FString& FileName, FCatalogSavePayload& OutPayload)
+	// Corrupt cai para o backup; Refused (schema futuro) não: o arquivo está bom, é o plugin que é velho.
+	enum class EExtract : uint8 { Ok, Corrupt, Refused };
+
+	struct FReadInfo
 	{
-		const UCatalogSaveGame* CatalogSaveObject = Cast<UCatalogSaveGame>(Loaded);
-		if (!CatalogSaveObject)
+		bool bRecovered = false;
+		int32 FileVersion = 0; // SaveVersion no arquivo, antes da migração
+	};
+
+	// Confere o CRC e migra uma cópia: OutPayload só muda se tudo der certo.
+	EExtract ExtractMigratedPayload(const USaveGame* Loaded, const FString& FileName, FCatalogSavePayload& OutPayload, FReadInfo* OutInfo = nullptr)
+	{
+		const UCatalogSaveGame* Envelope = Cast<UCatalogSaveGame>(Loaded);
+		if (!Envelope)
 		{
 			UE_LOG(LogCatalogAnchor, Warning, TEXT("CatalogSave: '%s' ausente ou não é um UCatalogSaveGame legível."), *FileName);
-			return false;
+			return EExtract::Corrupt;
 		}
-		FCatalogSavePayload Candidate = CatalogSaveObject->Payload;
+		if (!IsIntact(*Envelope) || Envelope->Payload.Header.SaveVersion < 0)
+		{
+			UE_LOG(LogCatalogAnchor, Warning, TEXT("CatalogSave: '%s' corrompido (CRC ou versão inválidos)."), *FileName);
+			return EExtract::Corrupt;
+		}
+		FCatalogSavePayload Candidate = Envelope->Payload;
 		if (!CatalogApplySaveMigration(Candidate))
 		{
-			return false; // a migração já logou o motivo
+			return EExtract::Refused; // a migração já logou o motivo
+		}
+		if (OutInfo)
+		{
+			OutInfo->FileVersion = Envelope->Payload.Header.SaveVersion;
 		}
 		OutPayload = MoveTemp(Candidate);
-		return true;
+		return EExtract::Ok;
 	}
 
-	bool ReadFromDisk(FName SlotName, FCatalogSavePayload& OutPayload)
+	// PrimaryLoaded = o que o backend entregou para o arquivo do slot (nullptr se não leu).
+	bool FinishRead(FName SlotName, const USaveGame* PrimaryLoaded, FCatalogSavePayload& OutPayload, FReadInfo* OutInfo = nullptr)
+	{
+		const FString FileName = SlotFileName(SlotName);
+		const EExtract Primary = ExtractMigratedPayload(PrimaryLoaded, FileName, OutPayload, OutInfo);
+		if (Primary != EExtract::Corrupt)
+		{
+			return Primary == EExtract::Ok;
+		}
+		if (!UGameplayStatics::DoesSaveGameExist(FileName, SaveUserIndex))
+		{
+			return false; // slot ausente, não corrompido: backup solto não o ressuscita
+		}
+		const int32 Count = ConfiguredBackupCount();
+		for (int32 Index = 1; Index <= Count; ++Index)
+		{
+			const FString Backup = BackupFileName(SlotName, Index);
+			if (!UGameplayStatics::DoesSaveGameExist(Backup, SaveUserIndex))
+			{
+				continue;
+			}
+			if (ExtractMigratedPayload(UGameplayStatics::LoadGameFromSlot(Backup, SaveUserIndex), Backup, OutPayload, OutInfo) == EExtract::Ok)
+			{
+				UE_LOG(LogCatalogAnchor, Warning, TEXT("CatalogSave: slot '%s' corrompido; lido do backup '%s'."), *SlotName.ToString(), *Backup);
+				if (OutInfo)
+				{
+					OutInfo->bRecovered = true;
+				}
+				return true;
+			}
+		}
+		return false;
+	}
+
+	bool ReadFromDisk(FName SlotName, FCatalogSavePayload& OutPayload, FReadInfo* OutInfo = nullptr)
 	{
 		const FString FileName = SlotFileName(SlotName);
 		if (!UGameplayStatics::DoesSaveGameExist(FileName, SaveUserIndex))
@@ -66,7 +196,7 @@ namespace CatalogSaveIO
 			UE_LOG(LogCatalogAnchor, Log, TEXT("CatalogSave: slot '%s' não existe."), *SlotName.ToString());
 			return false;
 		}
-		return ExtractMigratedPayload(UGameplayStatics::LoadGameFromSlot(FileName, SaveUserIndex), FileName, OutPayload);
+		return FinishRead(SlotName, UGameplayStatics::LoadGameFromSlot(FileName, SaveUserIndex), OutPayload, OutInfo);
 	}
 
 	FString CurrentMapName(const UGameInstance* GameInstance)
@@ -140,7 +270,18 @@ bool UCatalogSaveSubsystem::IsValidSlotName(FName SlotName)
 	const FString Prefix = Slot.Left(3); // == de FString ignora caixa
 	const bool bWindowsDevice = (Slot.Len() == 3 && (Prefix == TEXT("CON") || Prefix == TEXT("PRN") || Prefix == TEXT("AUX") || Prefix == TEXT("NUL")))
 		|| (Slot.Len() == 4 && FChar::IsDigit(Slot[3]) && (Prefix == TEXT("COM") || Prefix == TEXT("LPT")));
-	return !bWindowsDevice;
+	// "<slot>_bak" é o arquivo de backup de "<slot>": um slot com esse nome seria sobrescrito pela rotação.
+	return !bWindowsDevice && !CatalogSaveIO::IsBackupName(Slot);
+}
+
+FName UCatalogSaveSubsystem::GetBackupSlotName(FName SlotName, int32 BackupIndex)
+{
+	return (SlotName.IsNone() || BackupIndex < 1) ? NAME_None : FName(*CatalogSaveIO::BackupFileName(SlotName, BackupIndex));
+}
+
+void UCatalogSaveSubsystem::RememberSlot(FName SlotName)
+{
+	KnownSlots.AddUnique(SlotName);
 }
 
 bool UCatalogSaveSubsystem::SaveGame(FName SlotName)
@@ -150,6 +291,10 @@ bool UCatalogSaveSubsystem::SaveGame(FName SlotName)
 		return false;
 	}
 	const bool bSaved = CatalogSaveIO::WriteToDisk(BuildPayload(SlotName), SlotName);
+	if (bSaved)
+	{
+		RememberSlot(SlotName);
+	}
 	OnSaveCompleted.Broadcast(SlotName, bSaved);
 	return bSaved;
 }
@@ -164,6 +309,7 @@ bool UCatalogSaveSubsystem::LoadGame(FName SlotName)
 	const bool bLoaded = CatalogSaveIO::ReadFromDisk(SlotName, Loaded);
 	if (bLoaded)
 	{
+		RememberSlot(SlotName);
 		ApplyLoadedPayload(Loaded);
 	}
 	OnLoadCompleted.Broadcast(SlotName, bLoaded);
@@ -178,6 +324,7 @@ bool UCatalogSaveSubsystem::AsyncSaveGame(FName SlotName)
 	}
 	// Participantes e serialização rodam aqui, no game thread; só a escrita do arquivo vai para outra thread.
 	UCatalogSaveGame* SaveObject = CatalogSaveIO::NewSaveObject(BuildPayload(SlotName));
+	CatalogSaveIO::RotateBackups(SlotName);
 	BusySlots.Add(SlotName);
 	UE_LOG(LogCatalogAnchor, Verbose, TEXT("AsyncSaveGame: gravando '%s'..."), *SlotName.ToString());
 	UGameplayStatics::AsyncSaveGameToSlot(SaveObject, CatalogSaveIO::SlotFileName(SlotName), CatalogSaveIO::SaveUserIndex,
@@ -203,6 +350,7 @@ void UCatalogSaveSubsystem::HandleAsyncSaveFinished(const FString& FileName, con
 	BusySlots.Remove(SlotName);
 	if (bSuccess)
 	{
+		RememberSlot(SlotName);
 		UE_LOG(LogCatalogAnchor, Log, TEXT("AsyncSaveGame: slot '%s' gravado."), *SlotName.ToString());
 	}
 	else
@@ -212,13 +360,14 @@ void UCatalogSaveSubsystem::HandleAsyncSaveFinished(const FString& FileName, con
 	OnSaveCompleted.Broadcast(SlotName, bSuccess);
 }
 
-void UCatalogSaveSubsystem::HandleAsyncLoadFinished(const FString& FileName, const int32 /*UserIndex*/, USaveGame* LoadedSave, FName SlotName)
+void UCatalogSaveSubsystem::HandleAsyncLoadFinished(const FString& /*FileName*/, const int32 /*UserIndex*/, USaveGame* LoadedSave, FName SlotName)
 {
 	BusySlots.Remove(SlotName);
 	FCatalogSavePayload Loaded;
-	const bool bLoaded = CatalogSaveIO::ExtractMigratedPayload(LoadedSave, FileName, Loaded);
+	const bool bLoaded = CatalogSaveIO::FinishRead(SlotName, LoadedSave, Loaded);
 	if (bLoaded)
 	{
+		RememberSlot(SlotName);
 		ApplyLoadedPayload(Loaded);
 		UE_LOG(LogCatalogAnchor, Log, TEXT("AsyncLoadGame: slot '%s' carregado."), *SlotName.ToString());
 	}
@@ -234,6 +383,10 @@ bool UCatalogSaveSubsystem::SavePayloadToSlot(const FCatalogSavePayload& Payload
 	FCatalogSavePayload Stamped = Payload;
 	StampAndAdopt(Stamped);
 	const bool bSaved = CatalogSaveIO::WriteToDisk(Stamped, SlotName);
+	if (bSaved)
+	{
+		RememberSlot(SlotName);
+	}
 	OnSaveCompleted.Broadcast(SlotName, bSaved);
 	return bSaved;
 }
@@ -249,6 +402,17 @@ bool UCatalogSaveSubsystem::DeleteSlot(FName SlotName)
 	{
 		return false;
 	}
+	// Todos os backups possíveis, não só os configurados agora: BackupCount pode ter diminuído desde a gravação.
+	for (int32 Index = 1; Index <= CatalogSaveIO::MaxBackupCount; ++Index)
+	{
+		const FString Backup = CatalogSaveIO::BackupFileName(SlotName, Index);
+		if (UGameplayStatics::DoesSaveGameExist(Backup, CatalogSaveIO::SaveUserIndex))
+		{
+			UGameplayStatics::DeleteGameInSlot(Backup, CatalogSaveIO::SaveUserIndex);
+		}
+	}
+	KnownSlots.Remove(SlotName);
+
 	const FString FileName = CatalogSaveIO::SlotFileName(SlotName);
 	if (!UGameplayStatics::DoesSaveGameExist(FileName, CatalogSaveIO::SaveUserIndex))
 	{
@@ -261,6 +425,59 @@ bool UCatalogSaveSubsystem::DeleteSlot(FName SlotName)
 	}
 	UE_LOG(LogCatalogAnchor, Log, TEXT("DeleteSlot: slot '%s' apagado."), *SlotName.ToString());
 	return true;
+}
+
+TArray<FCatalogSaveSlotInfo> UCatalogSaveSubsystem::ListSaveSlots()
+{
+	// Nomes: o que a plataforma lista (se souber) + o que esta sessão já usou + o autosave.
+	TArray<FName> Names = KnownSlots;
+	Names.AddUnique(GetDefault<UCatalogAnchorSettings>()->AutosaveSlotName);
+
+	ISaveGameSystem* SaveSystem = IPlatformFeaturesModule::Get().GetSaveGameSystem();
+	TArray<FString> FoundFiles;
+	if (SaveSystem && SaveSystem->GetSaveGameNames(FoundFiles, CatalogSaveIO::SaveUserIndex))
+	{
+		for (const FString& FileName : FoundFiles)
+		{
+			Names.AddUnique(FName(*FileName));
+		}
+	}
+
+	TArray<FCatalogSaveSlotInfo> Slots;
+	for (const FName Name : Names)
+	{
+		// Inválido cobre os arquivos de backup (nomes reservados) e qualquer .sav alheio ao plugin.
+		if (!IsValidSlotName(Name) || !DoesSlotExist(Name))
+		{
+			continue;
+		}
+		FCatalogSaveSlotInfo& Info = Slots.AddDefaulted_GetRef();
+		Info.SlotName = Name;
+		if (BusySlots.Contains(Name))
+		{
+			Info.State = ECatalogSaveSlotState::Busy;
+			continue;
+		}
+		FCatalogSavePayload Payload;
+		CatalogSaveIO::FReadInfo ReadInfo;
+		if (!CatalogSaveIO::ReadFromDisk(Name, Payload, &ReadInfo))
+		{
+			continue; // fica Unreadable; ReadFromDisk já logou o motivo
+		}
+		Info.State = ReadInfo.bRecovered ? ECatalogSaveSlotState::Recovered : ECatalogSaveSlotState::Ok;
+		Info.SaveVersion = ReadInfo.FileVersion;
+		Info.Timestamp = Payload.Header.Timestamp;
+		Info.MapName = Payload.Metadata.MapName;
+		Info.PlaytimeSeconds = Payload.Metadata.PlaytimeSeconds;
+		Info.DisplayName = Payload.Metadata.DisplayName;
+	}
+
+	// Mais novo primeiro; ilegíveis/ocupados (Timestamp 0) no fim, em ordem estável de nome.
+	Slots.StableSort([](const FCatalogSaveSlotInfo& A, const FCatalogSaveSlotInfo& B)
+	{
+		return A.Timestamp > B.Timestamp;
+	});
+	return Slots;
 }
 
 bool UCatalogSaveSubsystem::DoesSlotExist(FName SlotName) const
@@ -325,6 +542,16 @@ void UCatalogSaveSubsystem::UnregisterParticipant(UObject* Participant)
 	{
 		return !Weak.IsValid() || Weak.Get() == Participant;
 	});
+}
+
+int32 UCatalogSaveSubsystem::GetParticipantCount() const
+{
+	int32 Count = 0;
+	for (const TWeakObjectPtr<UObject>& Weak : Participants)
+	{
+		Count += Weak.IsValid() ? 1 : 0;
+	}
+	return Count;
 }
 
 TArray<ICatalogSaveParticipant*> UCatalogSaveSubsystem::GetLiveParticipants()

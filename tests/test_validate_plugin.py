@@ -289,3 +289,119 @@ def test_23_descriptor_encodings(clean_root: Path, encoding: str, ok: bool):
     result = vp.run_validation(clean_root)
     assert result.ok() is ok, result.errors
     assert ok or any(".uproject JSON inválido" in e for e in result.errors)
+
+
+def _cpp(root: Path, rel: str, body: str) -> str:
+    """Escreve um .h/.cpp (com copyright e #pragma once) no módulo CatalogAnchor; devolve o caminho relativo à raiz."""
+    full = Path("Plugins/CatalogAnchor/Source/CatalogAnchor") / rel
+    pragma = "#pragma once\n" if rel.endswith(".h") else ""
+    (root / full).parent.mkdir(parents=True, exist_ok=True)
+    (root / full).write_text(f"{vp.COPYRIGHT_LINE}\n{pragma}{body}", encoding="utf-8")
+    return full.as_posix()
+
+
+@pytest.mark.parametrize(
+    ("name", "ok"),
+    [
+        ("CatalogAnchor.Save.Migrate", True),
+        ("CatalogAnchor.Save.World.Migrate", True),
+        ("Save.Migrate", False),
+        ("CatalogAnchor.Migrate", False),
+        ("CatalogAnchor..Migrate", False),
+        ("CatalogAnchorX.Save.Migrate", False),
+    ],
+)
+def test_24_automation_name_needs_prefix_area_and_case(clean_root: Path, name: str, ok: bool):
+    macro = f'IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSaveTest, "{name}", Flags)\n'
+    rel = _cpp(clean_root, "Private/Tests/SaveTests.cpp", macro)
+    result = vp.run_validation(clean_root)
+    assert result.ok() is ok, result.errors
+    assert ok or any(e.startswith(f"{rel}:2:") and "CatalogAnchor.<Área>.<Caso>" in e for e in result.errors)
+
+
+def test_25_automation_names_must_be_unique_and_custom_macro_is_read(clean_root: Path):
+    a = _cpp(clean_root, "Private/Tests/A.cpp", 'IMPLEMENT_SIMPLE_AUTOMATION_TEST(FA, "CatalogAnchor.Save.Same", F)\n')
+    b = _cpp(
+        clean_root,
+        "Private/Tests/B.cpp",
+        'IMPLEMENT_SIMPLE_AUTOMATION_TEST(FB,\n\t"CatalogAnchor.Save.Same", F)\n'
+        'IMPLEMENT_CUSTOM_SIMPLE_AUTOMATION_TEST(FC, FBase, "Wrong.Name", F)\n'
+        '// IMPLEMENT_SIMPLE_AUTOMATION_TEST(FD, "Commented.Out", F)\n',
+    )
+    errors = vp.run_validation(clean_root).errors
+    assert any(e.startswith(f"{b}:2:") and "duplicado" in e and f"{a}:2" in e for e in errors), errors
+    assert any(e.startswith(f"{b}:4:") and "'Wrong.Name'" in e for e in errors), errors
+    assert not any("Commented.Out" in e for e in errors), errors
+
+
+def test_26_doc_counts_are_warnings_unless_strict(clean_root: Path):
+    _cpp(clean_root, "Private/Tests/A.cpp", 'IMPLEMENT_SIMPLE_AUTOMATION_TEST(FA, "CatalogAnchor.Save.A", F)\n')
+    tests_dir = clean_root / "tests"
+    tests_dir.mkdir()
+    (tests_dir / "test_x.py").write_text(
+        "import pytest\n\n\ndef test_a():\n    pass\n\n\n"
+        "@pytest.mark.parametrize('x', [1, 2, 3])\ndef test_b(x):\n    pass\n",
+        encoding="utf-8",
+    )
+    readme = clean_root / "README.md"
+    readme.write_text("| pytest (5 casos) | CI |\n| Automation (2 testes C++) | UE |\n", encoding="utf-8")
+    docs = clean_root / "docs" / "INSTALACAO.md"
+    docs.write_text("# Instalacao\nUE 5.8\nroda os 3 testes de automação e 9 casos de pytest\n", encoding="utf-8")
+
+    result = vp.run_validation(clean_root)
+    assert result.ok(), result.errors
+    places = sorted(w.split(": ", 1)[0] for w in result.warnings)
+    assert places == ["README.md:1", "README.md:2", "docs/INSTALACAO.md:3", "docs/INSTALACAO.md:3"]
+    assert any("cita 5 casos de pytest, mas tests/ tem 4" in w for w in result.warnings), result.warnings
+    assert any("cita 2 testes de automação, mas o código tem 1" in w for w in result.warnings), result.warnings
+
+    strict = vp.run_validation(clean_root, strict_docs=True)
+    assert sorted(strict.errors) == sorted(result.warnings) and not strict.warnings
+    assert vp.main(["--root", str(clean_root)]) == 0
+    assert vp.main(["--root", str(clean_root), "--strict-docs"]) == 1
+
+    readme.write_text("| pytest (4 casos) | CI |\n| Automation (1 testes C++) | UE |\n", encoding="utf-8")
+    docs.write_text("# Instalacao\nUE 5.8\nroda o 1 testes verdes e 4 casos de pytest\n", encoding="utf-8")
+    clean = vp.run_validation(clean_root, strict_docs=True)
+    assert clean.ok() and not clean.warnings, (clean.errors, clean.warnings)
+
+
+@pytest.mark.parametrize(
+    ("specs", "cpp", "expected"),
+    [
+        ("Server, Reliable", "", "sem WithValidation"),
+        ("Server, Reliable, WithValidation", "", "ServerFoo_Validate() não encontrada"),
+        ("Server, Reliable, WithValidation", "// bool UCatalogRpc::ServerFoo_Validate(int32 A)\n", "_Validate() não"),
+        ("Server, Reliable, WithValidation", "bool UCatalogRpc::ServerFoo_Validate(int32 A) { return true; }\n", None),
+        ('Reliable, Server, Category = "A|B, C", meta = (Tip = "x,y"), WithValidation', "ServerFoo_Validate(", None),
+        ('Server, Category = "A|B, C", meta = (Tip = "x)y")', "", "sem WithValidation"),
+        ("Client, Reliable", "", None),
+        ("BlueprintCallable", "", None),
+    ],
+)
+def test_27_server_rpc_needs_validation(clean_root: Path, specs: str, cpp: str, expected: str | None):
+    header = f"class UCatalogRpc\n{{\n\tUFUNCTION({specs})\n\tvoid ServerFoo(int32 A);\n}};\n"
+    _cpp(clean_root, "Public/CatalogRpc.h", header)
+    _cpp(clean_root, "Private/CatalogRpc.cpp", cpp)
+    result = vp.run_validation(clean_root, strict_rpc=True)
+    assert result.ok() is (expected is None), result.errors
+    assert expected is None or any(
+        e.startswith("Plugins/CatalogAnchor/Source/CatalogAnchor/Public/CatalogRpc.h:5:") and expected in e
+        for e in result.errors
+    ), result.errors
+
+
+def test_28_server_rpc_violations_are_errors_unless_relaxed(clean_root: Path):
+    header = "class UCatalogRpc\n{\n\tUFUNCTION(Server, Reliable)\n\tvoid ServerFoo();\n};\n"
+    _cpp(clean_root, "Public/CatalogRpc.h", header)
+    assert not vp.run_validation(clean_root).ok()
+    result = vp.run_validation(clean_root, strict_rpc=False)
+    assert result.ok() and any("sem WithValidation" in w for w in result.warnings), (result.errors, result.warnings)
+    assert vp.main(["--root", str(clean_root)]) == 1
+    assert vp.main(["--root", str(clean_root), "--no-strict-rpc"]) == 0
+
+
+def test_29_counts_on_real_repo():
+    tests = vp.automation_tests(vp.cpp_texts(ROOT))
+    assert len(tests) > 0 and all(vp.AUTOMATION_NAME_RE.match(name) for _, _, name in tests)
+    assert (vp.pytest_case_count(ROOT / "tests") or 0) >= len(list((ROOT / "tests").glob("test_*.py")))

@@ -44,31 +44,40 @@ Roda `RunUAT BuildPlugin` e compila Runtime + Editor num projeto temporário; a 
 py -3 tools/ue.py test
 ```
 
-Compila o `SampleCatalogEditor` e roda os 33 testes de automação `CatalogAnchor.*` no editor headless
+Compila o `SampleCatalogEditor` e roda os 64 testes de automação `CatalogAnchor.*` no editor headless
 (`-nullrhi`). Logs e relatório (`index.json`) vão para `--report-dir` (default `Saved/Reports`); sai ≠ 0 se
 algum teste falhar ou se nenhum teste rodar.
 
 Use `--dry-run` para ver o comando sem executar.
 
+**Sem Visual Studio:** `py -3 tools/get_msvc.py` baixa MSVC 14.44 + Windows SDK 22621 + NetFx 4.6.2 (pacotes
+oficiais) no layout AutoSDK; depois defina `UE_SDKS_ROOT` com o diretório impresso no final e rode `tools/ue.py`.
+Compile a partir de um caminho ASCII.
+
 ## Checklist no Editor
 
 - [ ] Output Log: `LogCatalogAnchor: CatalogAnchor Runtime online`
 - [ ] Project Settings → Plugins → **Catalog Anchor** mostra Interaction / Save / Inventory / Ability
-- [ ] Session Frontend → Automation → `CatalogAnchor` → 33 testes verdes (com o PIE parado)
+- [ ] Session Frontend → Automation → `CatalogAnchor` → 64 testes verdes (com o PIE parado)
 - [ ] Sample: pegar pickups, abrir o baú segurando E, pegar a chave e abrir o baú trancado
 - [ ] Sample: F5 → fechar o PIE → Play → F9 restaura inventário, posição e vida
 - [ ] Sample: Tab abre o menu de saves (salvar/carregar/apagar com metadados)
 - [ ] Sample em **2 jogadores (Listen Server)**: o cliente vê pickups/baús, coleta e segura E
 - [ ] Data Asset `CatalogItemDefinition` sem DisplayName → **Validate** falha com mensagem clara
 - [ ] **Tools → Catalog Anchor → Validate Catalog Assets** mostra o resumo
+- [ ] **Tools → Catalog Anchor → Report Catalog Assets** escreve contagens e problemas no Output Log
+- [ ] Add (+) no Content Browser lista a categoria **Catalog Anchor** (Item e Ability Definition)
+- [ ] PIE: console `catalog.Save.Now`, `catalog.Save.List`, `catalog.Save.Load`, `catalog.Save.Delete`
+- [ ] PIE: `catalog.Interaction.Debug 1` desenha o trace de interação (não-Shipping)
 
 ## O que o CI deste repositório faz (e não faz)
 
 | Ação | CI (GitHub Actions) | Sua máquina com UE 5.8+ |
 |---|---|---|
-| Manifestos, dependências, lint de C++ | ✅ `tools/validate_plugin.py` | ✅ |
+| Manifestos, dependências, lint de C++, RPCs com validação | ✅ `tools/validate_plugin.py` | ✅ |
 | pytest (Python 3.10–3.14, JUnit) + ruff do tooling | ✅ `ci.yml` | ✅ |
 | Compilar C++ (UBT) | ❌ sem engine (✅ `ue.yml` em runner self-hosted) | ✅ `tools/ue.py build-plugin` |
-| Testes de automação | ❌ (✅ `ue.yml` em runner self-hosted) | ✅ `tools/ue.py test` |
+| Testes de automação | ❌ (✅ `ue.yml` em runner self-hosted, ainda não rodou) | ✅ `tools/ue.py test` |
+| Release (tag `v*`) | ✅ `release.yml`: valida, testa, empacota o plugin | n/a |
 | PIE / multiplayer | ❌ | roteiro em [MULTIPLAYER_TESTS.md](MULTIPLAYER_TESTS.md) |
 | Medir FPS | ❌ nunca inventamos números | seu profiler |
