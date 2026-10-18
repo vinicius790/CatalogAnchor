@@ -5,7 +5,7 @@ Cada item tem passos, o resultado esperado (tirado do código atual) e um status
 Os testes automáticos (`CatalogAnchor.*`) cobrem a lógica sem rede; este roteiro cobre o que só
 aparece com servidor e clientes separados.
 
-> **Status geral (2026-10-13): parcial.** Executado de verdade, headless (`-nullrhi`, sem teclado nem mouse):
+> **Status geral (reconferido em 2026-10-18): parcial.** As tabelas do Dump (dedicado + 2 clientes; listen + 1 cliente) foram reproduzidas. Executado de verdade, headless (`-nullrhi`, sem teclado nem mouse):
 > servidor dedicado + 2 clientes e listen server + 1 cliente, com `catalog.Debug.Dump` (ver 2.0). Esse comando
 > prova conexão, spawn, replicação de vida e o registro de participantes do save. Tudo que depende de input
 > (segurar E, golpe, Shift, F5/F9) está marcado `bloqueado` com o motivo. UE 5.8.3, Win64 Development Editor.
@@ -218,7 +218,7 @@ Esperado:
 - O cliente 2 mantém o próprio inventário; o save do host não o altera.
 - O arquivo `SampleProject/Saved/SaveGames/Quick.sav` tem data de modificação do passo 1.
 
-status: bloqueado: F5/F9 são input e o fluxo pede reiniciar o PIE; `catalog.Save.Now/Load` existem mas não foram executados nesta rodada (sem estado a salvar sem input).
+status: executado/parcial. Conferido em 2026-10-18 (standalone `-game`, headless): `catalog.Save.Now MPT` gravou `Saved/SaveGames/mpt.sav` (schema v2, `SaveParticipants=2`), `catalog.Save.List` listou 1 slot e `catalog.Save.Load MPT` carregou. NÃO verificado: F5/F9 (input), restauração de posição/vida/inventário depois de mudar o estado, reiniciar o PIE e o cliente remoto (bloqueado: sem input).
 
 ## 3. Testes automáticos de mundo relacionados
 
@@ -228,4 +228,4 @@ Rodam sem rede, num `UWorld` próprio (Session Frontend → Automation, filtro `
 `.DestroyedDuringCallback`, `.RespectsCanBeDamaged`, `.SetHealth` e
 `CatalogAnchor.Abilities.DeadAvatarCannotActivate`.
 
-status: executado: testes automáticos de mundo rodaram via `py -3 tools/ue.py test`: 33 ok, 0 falhas, exit 0 (build + editor headless); lista completa em Saved/Reports/index.json.
+status: executado: na reconferência de 2026-10-18 a suíte completa `CatalogAnchor` deu 67 de 67 Success, exit 0 (`py -3 tools/ue.py test`; relatório em Saved/Reports/index.json).
