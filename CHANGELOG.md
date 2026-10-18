@@ -7,6 +7,11 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) · versões
 ## [0.5.0] — 2026-10-13
 
 ### Adicionado
+- **Multiplayer headless:** `catalog.Debug.Aim|Hold|Ability|Dump` + `tools/mp_run.py` executam MP-03, 04, 06 e 07 (dedicado + 2 clientes): 27/27 predicados com evidência de log.
+- Itens usáveis que não se consomem têm `UseCooldownSeconds` (servidor); `ServerUseItem` não repete o efeito sem limite.
+- Save: rotação de backups por mover/copiar arquivos (sem reler e regravar), `DeleteSlot` apaga o principal antes dos backups, e falha de LEITURA do principal não cai mais no backup (evita rollback silencioso).
+- Vida: `SetHealth` antes do `BeginPlay` é mantido, `Heal` devolve o que curou e `SetHealth` restaura o valor exato. Editor: `Weight`, `UseCooldownSeconds` e `Dash->Strength` inválidos viram erro.
+- Tooling: `get_msvc.py` bloqueia `..` no zip e faz hash em blocos; `release.yml` aceita pré-release (`-rc1`); validador e `ue.py` resistem a entradas malformadas.
 - Vida: o 1º valor replicado não gera delta falso; testes das `_Validate` (habilidade, interação, inventário) e `catalog.Debug.Dump`/comandos de depuração. 67 testes de automação passando.
 - **Verificação real (Windows, UE 5.8.3, MSVC 14.44, Windows SDK 22621):** build do `SampleCatalogEditor` OK e
   **64/64 testes de automação** passando no `UnrealEditor-Cmd`; pytest com 118 casos (Python 3.13 e 3.14).

@@ -3,13 +3,15 @@
 ## Estado real da verificação
 
 - **Compilado e testado (Windows, UE 5.8.3, MSVC 14.44.35229, Windows SDK 22621):** `SampleCatalogEditor`
-  (plugin Runtime + Editor + sample) compila sem erros e os **67 testes de automação** passam no
+  (plugin Runtime + Editor + sample) compila sem erros e os **73 testes de automação** passam no
   `UnrealEditor-Cmd`. A toolchain veio de `tools/get_msvc.py` (pacotes oficiais, sem Visual Studio) via
-  `UE_SDKS_ROOT`; o repo foi compilado a partir de um caminho ASCII. pytest: 118 casos (Python 3.13 e 3.14).
+  `UE_SDKS_ROOT`; o repo foi compilado a partir de um caminho ASCII. pytest: 140 casos (Python 3.13 e 3.14).
 - Os 14 "Condition failed" no startup do editor vêm da engine 5.8.3 (provado num projeto vazio), não do plugin.
 - O CI público não tem engine; o workflow `ue.yml` (runner self-hosted) ainda não rodou num runner real.
-- **Multiplayer:** o status real dos testes de rede está em [docs/MULTIPLAYER_TESTS.md](docs/MULTIPLAYER_TESTS.md);
-  este arquivo não afirma resultado de MP. Os testes de automação usam um `UWorld` próprio, sem conexão de rede.
+- **Multiplayer:** MP-03, 04, 06 e 07 rodam headless com `py -3 tools/mp_run.py --project <uproject> --case all` (dedicado + 2 clientes;
+  27/27 predicados, com a linha de log como evidência; detalhes em [docs/MULTIPLAYER_TESTS.md](docs/MULTIPLAYER_TESTS.md)). **Não verificado:** HUD e
+  barra de hold, F5/F9 por tecla, listen server nos casos 03/04/06 e abrir o baú trancado com a chave. Os testes de automação
+  usam um `UWorld` próprio, sem conexão de rede.
 - **Foco/highlight real** só é verificável no PIE (precisa de `PlayerController` local com câmera): a automação
   cobre o trace (`ComputeTraceSegment`, `FindOwningController`), não o highlight na tela.
 - As assinaturas de API mais arriscadas foram conferidas lendo os headers da 5.8.3

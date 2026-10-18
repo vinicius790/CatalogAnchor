@@ -64,6 +64,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Catalog|Inventory|Use", meta = (EditCondition = "bUsable"))
 	bool bConsumeOnUse = true;
 
+	/** Intervalo mínimo entre usos de um item que NÃO se consome (o estoque já limita os consumíveis); 0 = sem limite. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Catalog|Inventory|Use", meta = (ClampMin = "0", EditCondition = "bUsable && !bConsumeOnUse"))
+	float UseCooldownSeconds = 0.25f;
+
 	/**
 	 * Efeito de UMA unidade usada (chamado no servidor, já depois do consumo). User é o Pawn (ou o dono do
 	 * inventário, se não houver Pawn). Padrão: nada. Const: a definição é asset compartilhado, não guarda estado.

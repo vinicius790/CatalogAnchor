@@ -405,3 +405,11 @@ def test_29_counts_on_real_repo():
     tests = vp.automation_tests(vp.cpp_texts(ROOT))
     assert len(tests) > 0 and all(vp.AUTOMATION_NAME_RE.match(name) for _, _, name in tests)
     assert (vp.pytest_case_count(ROOT / "tests") or 0) >= len(list((ROOT / "tests").glob("test_*.py")))
+
+
+def test_30_non_utf8_build_cs_and_docs_do_not_crash(clean_root: Path):
+    build = clean_root / "Plugins" / "CatalogAnchor" / "Source" / "CatalogAnchor" / "CatalogAnchor.Build.cs"
+    build.write_bytes(build.read_bytes() + b"\n// coment\xe1rio cp1252\n")
+    doc = clean_root / "docs" / "TECNOLOGIAS.md"
+    doc.write_bytes(doc.read_bytes() + b"\nacentua\xe7\xe3o\n")
+    assert vp.run_validation(clean_root).ok()

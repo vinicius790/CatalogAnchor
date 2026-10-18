@@ -99,6 +99,12 @@ bool FCatalogInventoryUseItemWorldTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Usa não consumível"), Inventory->UseItem(Elixir, 1));
 	TestEqual(TEXT("Não consumível fica"), Inventory->GetItemCount(Elixir), 1);
 	TestEqual(TEXT("Não consumível: efeito aplicado"), Elixir->UseCount, 1);
+	// Sem estoque limitando, o item não consumível tem intervalo mínimo entre usos (o tempo do mundo de teste não anda).
+	TestFalse(TEXT("Segundo uso em seguida é recusado"), Inventory->UseItem(Elixir, 1));
+	TestEqual(TEXT("Recusado: sem efeito"), Elixir->UseCount, 1);
+	Elixir->UseCooldownSeconds = 0.f;
+	TestTrue(TEXT("Sem intervalo: usa de novo"), Inventory->UseItem(Elixir, 1));
+	TestEqual(TEXT("Efeito aplicado de novo"), Elixir->UseCount, 2);
 
 	// RPC no servidor (standalone: executa direto) passa pela mesma validação.
 	Inventory->ServerUseItem(Rock, 1);

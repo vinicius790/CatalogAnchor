@@ -233,7 +233,7 @@ def validate_tree(root: Path, result: ValidationResult) -> dict[str, Path]:
 
 
 def validate_build_cs(path: Path, module_name: str, result: ValidationResult) -> None:
-    text = path.read_text(encoding="utf-8")
+    text = path.read_text(encoding="utf-8", errors="replace")  # Build.cs em cp1252: erro de regra, não traceback
     code = CS_COMMENT_RE.sub("", text)
     if not re.search(rf"\bclass\s+{re.escape(module_name)}\s*:\s*ModuleRules\b", code):
         result.fail(f"{path.name}: classe {module_name} : ModuleRules não encontrada")
@@ -470,7 +470,7 @@ def doc_count_divergences(root: Path, automation: int, pytest_cases: int | None)
 
 
 def validate_header_stub(path: Path, needle: str, result: ValidationResult) -> None:
-    text = path.read_text(encoding="utf-8")
+    text = path.read_text(encoding="utf-8", errors="replace")
     if needle not in text:
         result.fail(f"{path.name}: espere {needle!r}")
     if "#pragma once" not in text:
@@ -512,7 +512,7 @@ def run_validation(
     for key, module in (("runtime_build", "CatalogAnchor"), ("editor_build", "CatalogAnchorEditor")):
         if paths[key].is_file():
             validate_build_cs(paths[key], module, result)
-            build_texts.append(paths[key].read_text(encoding="utf-8"))
+            build_texts.append(paths[key].read_text(encoding="utf-8", errors="replace"))
     if uplugin is not None:
         validate_plugin_dependencies(uplugin, build_texts, result)
 
@@ -534,7 +534,7 @@ def run_validation(
     for doc_key in ("tecnologias", "instalacao"):
         doc_path = paths[doc_key]
         if doc_path.is_file():
-            doc_text = doc_path.read_text(encoding="utf-8")
+            doc_text = doc_path.read_text(encoding="utf-8", errors="replace")
             if "5.8" not in doc_text:
                 result.fail(f"{doc_path.name}: docs devem citar a versão alvo (Unreal Engine 5.8)")
 

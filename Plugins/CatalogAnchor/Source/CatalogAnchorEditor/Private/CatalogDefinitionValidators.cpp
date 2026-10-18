@@ -112,6 +112,18 @@ FCatalogValidationIssues UCatalogItemDefinitionValidator::GetIssues(const UCatal
 			LOCTEXT("ItemBadStack", "CatalogAnchor: MaxStackSize {0} (precisa ser >= 1)."), Item.MaxStackSize));
 	}
 
+	// Mesmo motivo do MaxStackSize: ClampMin não protege Python/CSV, e NaN em Weight/cooldown trava limite de peso e uso.
+	if (!FMath::IsFinite(Item.Weight) || Item.Weight < 0.f)
+	{
+		Issues.Errors.Add(FText::Format(
+			LOCTEXT("ItemBadWeight", "CatalogAnchor: Weight {0} (precisa ser finito e >= 0)."), Item.Weight));
+	}
+	if (!FMath::IsFinite(Item.UseCooldownSeconds) || Item.UseCooldownSeconds < 0.f)
+	{
+		Issues.Errors.Add(FText::Format(
+			LOCTEXT("ItemBadUseCooldown", "CatalogAnchor: UseCooldownSeconds {0} (precisa ser finito e >= 0)."), Item.UseCooldownSeconds));
+	}
+
 	CatalogDefinitionValidatorsPrivate::AppendNullVisualWarnings(Item, Issues.Warnings);
 
 	if (!CatalogFollowsNamingConvention(Item.GetName(), TEXT("CA_Item_")))
@@ -194,6 +206,14 @@ FCatalogValidationIssues UCatalogAbilityDefinitionValidator::GetIssues(const UCa
 	if (!Definition.Behavior)
 	{
 		Issues.Errors.Add(LOCTEXT("AbilityNoBehavior", "CatalogAnchor: Behavior vazio; escolha uma subclasse de UCatalogAbility (Dash, Melee Sweep...)."));
+	}
+	else if (const UCatalogAbility_Dash* Dash = Cast<UCatalogAbility_Dash>(Definition.Behavior.Get()))
+	{
+		if (!FMath::IsFinite(Dash->Strength) || Dash->Strength < 0.f)
+		{
+			Issues.Errors.Add(FText::Format(
+				LOCTEXT("DashBadStrength", "CatalogAnchor: Dash Strength {0} (precisa ser finito e >= 0)."), Dash->Strength));
+		}
 	}
 	else if (const UCatalogAbility_MeleeSweep* Melee = Cast<UCatalogAbility_MeleeSweep>(Definition.Behavior.Get()))
 	{

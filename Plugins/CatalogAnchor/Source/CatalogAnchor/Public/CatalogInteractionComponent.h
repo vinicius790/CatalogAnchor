@@ -150,6 +150,9 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Catalog|Interaction")
 	FText GetCurrentPrompt() const;
 
+	/** true se OnFocusChanged(true) foi entregue ao alvo atual nesta máquina (só o jogador local anuncia foco). */
+	bool IsFocusAnnounced() const { return bFocusAnnounced && FocusedTarget.IsValid(); }
+
 	/**
 	 * Lógica pura do progresso (testável sem mundo). Duração 0/negativa/NaN = 1 (instantâneo);
 	 * tempo inválido ou Now < StartTime = 0, para nunca completar por acidente.

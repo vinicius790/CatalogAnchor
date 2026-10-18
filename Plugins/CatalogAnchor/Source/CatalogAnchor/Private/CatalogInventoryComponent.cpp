@@ -404,6 +404,20 @@ bool UCatalogInventoryComponent::UseItem(const UCatalogItemDefinition* Item, int
 		return false;
 	}
 
+	// Item que não se consome não tem estoque limitando: sem isso um cliente repete o efeito a cada RPC.
+	if (!Item->bConsumeOnUse && Item->UseCooldownSeconds > 0.f)
+	{
+		const UWorld* World = GetWorld();
+		const double Now = World ? World->GetTimeSeconds() : 0.0;
+		const double* NextUse = NextUseTimes.Find(Item);
+		if (NextUse && Now < *NextUse)
+		{
+			UE_LOG(LogCatalogAnchor, Verbose, TEXT("UseItem recusado: %s em espera por mais %.2f s."), *GetNameSafe(Item), *NextUse - Now);
+			return false;
+		}
+		NextUseTimes.Add(Item, Now + Item->UseCooldownSeconds);
+	}
+
 	// Consome antes dos efeitos: um OnUsed reentrante não gasta a mesma unidade duas vezes.
 	if (Item->bConsumeOnUse)
 	{

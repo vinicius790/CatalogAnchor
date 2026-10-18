@@ -209,14 +209,16 @@ def summarize_report(report_dir: Path) -> tuple[bool, str]:
         return False, f"relatório ausente: {index} (o editor caiu antes de exportar? veja Editor.log)"
     except (OSError, ValueError) as exc:
         return False, f"relatório ilegível: {index}: {exc}"
-    tests = data.get("tests") or []
+    if not isinstance(data, dict) or not isinstance(data.get("tests") or [], list):
+        return False, f"relatório ilegível: {index}: formato inesperado (esperado objeto com lista 'tests')"
     by_state: dict[str, list[str]] = {}
-    for test in tests:
+    for test in (t for t in data.get("tests") or [] if isinstance(t, dict)):
         by_state.setdefault(test.get("state", "NotRun"), []).append(test.get("fullTestPath", "?"))
     passed = len(by_state.get("Success", []))
     failed = by_state.get("Fail", [])
     unfinished = by_state.get("NotRun", []) + by_state.get("InProcess", [])
-    n_failed = max(len(failed), int(data.get("failed") or 0))
+    reported = data.get("failed")
+    n_failed = max(len(failed), reported if isinstance(reported, int) else 0)
     summary = (
         f"{passed} ok, {n_failed} falha(s), {len(unfinished)} não terminado(s), "
         f"{len(by_state.get('Skipped', []))} pulado(s)"

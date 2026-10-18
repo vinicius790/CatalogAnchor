@@ -66,14 +66,14 @@ py -3 tools/ue.py test
 | Gate | Onde roda | O que cobre |
 |---|---|---|
 | `tools/validate_plugin.py` | CI (GitHub Actions) | manifestos `.uplugin`/`.uproject`, dependências de plugin, árvore, **lint de C++** (copyright, `#pragma once`, `.generated.h` por último, TABs, BOM em fonte com acento, `_API` em tipos exportados, sem `LogTemp`), todo Server RPC com `WithValidation`/`_Validate` (`--no-strict-rpc` rebaixa a aviso) e contagens de testes citadas nos docs (`--strict-docs`) |
-| pytest (118 casos) | CI: Python 3.10–3.14, Ubuntu + Windows, relatório JUnit | validador, lint e `tools/ue.py` |
+| pytest (140 casos) | CI: Python 3.10–3.14, Ubuntu + Windows, relatório JUnit | validador, lint e `tools/ue.py` |
 | ruff | CI | estilo do Python |
-| Automation (67 testes C++) | sua máquina com UE (`tools/ue.py test`) ou `ue.yml` em runner self-hosted | migração, gerações, CRC e backup de save, nomes de slot, empilhamento, uso/transferência/peso, cooldown, vida em mundo, trace e assist de interação, save do sample, validadores |
+| Automation (73 testes C++) | sua máquina com UE (`tools/ue.py test`) ou `ue.yml` em runner self-hosted | migração, gerações, CRC e backup de save, nomes de slot, empilhamento, uso/transferência/peso, cooldown, vida em mundo, trace e assist de interação, save do sample, validadores |
 
 > O CI público **não** compila C++: não há Unreal Engine nos runners do GitHub. O workflow `ue.yml` compila e roda
 > os testes de automação só num runner self-hosted (variável `UE_RUNNER_ENABLED=true`), que ainda não rodou num
 > runner real. **Verificado manualmente (Windows, UE 5.8.3, MSVC 14.44):** build do `SampleCatalogEditor` OK e
-> 64/67 testes de automação passando no `UnrealEditor-Cmd`. Ver [LIMITATIONS](LIMITATIONS.md).
+> 64/73 testes de automação passando no `UnrealEditor-Cmd`. Ver [LIMITATIONS](LIMITATIONS.md).
 
 ## Estrutura
 

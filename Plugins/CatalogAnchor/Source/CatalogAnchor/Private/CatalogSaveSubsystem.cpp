@@ -6,7 +6,9 @@
 #include "ICatalogSaveParticipant.h"
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
+#include "HAL/FileManager.h"
 #include "HAL/PlatformTime.h"
+#include "Misc/Paths.h"
 #include "Kismet/GameplayStatics.h"
 #include "PlatformFeatures.h"
 #include "SaveGameSystem.h"
@@ -76,8 +78,34 @@ namespace CatalogSaveIO
 			&& UGameplayStatics::LoadDataFromSlot(OutBytes, FileName, SaveUserIndex);
 	}
 
+	// Backend de arquivos padrão (ISaveGameSystem genérico): Saved/SaveGames/<slot>.sav.
+	FString SlotFilePath(const FString& FileName)
+	{
+		return FPaths::ProjectSavedDir() / TEXT("SaveGames") / (FileName + TEXT(".sav"));
+	}
+
+	// Um passo da rotação: move (ou copia, se bKeepSource) o arquivo no disco, sem ler nem reescrever bytes na thread
+	// do jogo. Backend que não é de arquivos, ou SO que recusou: cai para ler+gravar os bytes.
+	bool ShiftSlotFile(const FString& From, const FString& To, bool bKeepSource)
+	{
+		IFileManager& FileManager = IFileManager::Get();
+		const FString FromPath = SlotFilePath(From);
+		const FString ToPath = SlotFilePath(To);
+		if (FileManager.FileSize(*FromPath) >= 0)
+		{
+			const bool bDone = bKeepSource ? FileManager.Copy(*ToPath, *FromPath, /*Replace*/ true, /*EvenIfReadOnly*/ true) == COPY_OK
+				: FileManager.Move(*ToPath, *FromPath, /*Replace*/ true, /*EvenIfReadOnly*/ true, /*Attributes*/ false, /*bDoNotRetryOrError*/ true);
+			if (bDone)
+			{
+				return true;
+			}
+		}
+		TArray<uint8> Bytes;
+		return TryLoadBytes(From, Bytes) && UGameplayStatics::SaveDataToSlot(Bytes, To, SaveUserIndex);
+	}
+
 	// Desloca <slot> -> _bak -> _bak2... Só se o arquivo atual confere: um corrompido não vira backup
-	// nem empurra um bom para fora. Bytes crus, sem reserializar.
+	// nem empurra um bom para fora. Os backups antigos são renomeados; o atual é copiado (fica no lugar até o save novo).
 	void RotateBackups(FName SlotName)
 	{
 		const int32 Count = ConfiguredBackupCount();
@@ -94,13 +122,9 @@ namespace CatalogSaveIO
 		}
 		for (int32 Index = Count; Index > 1; --Index)
 		{
-			TArray<uint8> Older;
-			if (TryLoadBytes(BackupFileName(SlotName, Index - 1), Older))
-			{
-				UGameplayStatics::SaveDataToSlot(Older, BackupFileName(SlotName, Index), SaveUserIndex);
-			}
+			ShiftSlotFile(BackupFileName(SlotName, Index - 1), BackupFileName(SlotName, Index), /*bKeepSource*/ false);
 		}
-		if (!UGameplayStatics::SaveDataToSlot(Current, BackupFileName(SlotName, 1), SaveUserIndex))
+		if (!ShiftSlotFile(SlotFileName(SlotName), BackupFileName(SlotName, 1), /*bKeepSource*/ true))
 		{
 			UE_LOG(LogCatalogAnchor, Warning, TEXT("CatalogSave: falha ao gravar o backup do slot '%s'."), *SlotName.ToString());
 		}
@@ -166,6 +190,14 @@ namespace CatalogSaveIO
 		if (!UGameplayStatics::DoesSaveGameExist(FileName, SaveUserIndex))
 		{
 			return false; // slot ausente, não corrompido: backup solto não o ressuscita
+		}
+		// Falha ao LER os bytes (arquivo travado por antivírus/sincronização) não é corrupção: cair no backup
+		// devolveria um save mais velho e o próximo save apagaria o progresso recente.
+		TArray<uint8> Raw;
+		if (!UGameplayStatics::LoadDataFromSlot(Raw, FileName, SaveUserIndex))
+		{
+			UE_LOG(LogCatalogAnchor, Error, TEXT("CatalogSave: não foi possível ler '%s' (travado?); backups não usados."), *FileName);
+			return false;
 		}
 		const int32 Count = ConfiguredBackupCount();
 		for (int32 Index = 1; Index <= Count; ++Index)
@@ -402,6 +434,14 @@ bool UCatalogSaveSubsystem::DeleteSlot(FName SlotName)
 	{
 		return false;
 	}
+	// O principal sai primeiro: se ele não puder ser apagado (arquivo travado), os backups continuam como rede de segurança.
+	const FString FileName = CatalogSaveIO::SlotFileName(SlotName);
+	const bool bMainExists = UGameplayStatics::DoesSaveGameExist(FileName, CatalogSaveIO::SaveUserIndex);
+	if (bMainExists && !UGameplayStatics::DeleteGameInSlot(FileName, CatalogSaveIO::SaveUserIndex))
+	{
+		UE_LOG(LogCatalogAnchor, Error, TEXT("DeleteSlot: falha ao apagar '%s'; backups mantidos."), *FileName);
+		return false;
+	}
 	// Todos os backups possíveis, não só os configurados agora: BackupCount pode ter diminuído desde a gravação.
 	for (int32 Index = 1; Index <= CatalogSaveIO::MaxBackupCount; ++Index)
 	{
@@ -412,19 +452,11 @@ bool UCatalogSaveSubsystem::DeleteSlot(FName SlotName)
 		}
 	}
 	KnownSlots.Remove(SlotName);
-
-	const FString FileName = CatalogSaveIO::SlotFileName(SlotName);
-	if (!UGameplayStatics::DoesSaveGameExist(FileName, CatalogSaveIO::SaveUserIndex))
+	if (bMainExists)
 	{
-		return false;
+		UE_LOG(LogCatalogAnchor, Log, TEXT("DeleteSlot: slot '%s' apagado."), *SlotName.ToString());
 	}
-	if (!UGameplayStatics::DeleteGameInSlot(FileName, CatalogSaveIO::SaveUserIndex))
-	{
-		UE_LOG(LogCatalogAnchor, Error, TEXT("DeleteSlot: falha ao apagar '%s'."), *FileName);
-		return false;
-	}
-	UE_LOG(LogCatalogAnchor, Log, TEXT("DeleteSlot: slot '%s' apagado."), *SlotName.ToString());
-	return true;
+	return bMainExists;
 }
 
 TArray<FCatalogSaveSlotInfo> UCatalogSaveSubsystem::ListSaveSlots()

@@ -389,3 +389,10 @@ def test_dev_build_delegates_to_ue_build_plugin(no_engine_env, tmp_path: Path):
     no_engine_env.setattr(ue, "main", lambda argv: calls.append(argv) or 0)
     assert dev.main(["build"]) == 0
     assert calls == [["build-plugin"]]
+
+
+@pytest.mark.parametrize("payload", ["[]", '{"tests": 5}', '{"tests": [1, "x"], "failed": "2"}', "null"])
+def test_summarize_report_tolerates_unexpected_json_shapes(tmp_path: Path, payload: str):
+    (tmp_path / "index.json").write_text(payload, encoding="utf-8")
+    ok, summary = ue.summarize_report(tmp_path)  # sem AttributeError/ValueError
+    assert not ok and summary

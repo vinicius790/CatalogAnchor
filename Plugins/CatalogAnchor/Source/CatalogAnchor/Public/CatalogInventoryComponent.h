@@ -147,6 +147,9 @@ private:
 	UPROPERTY(Replicated)
 	FCatalogInventoryList InventoryList;
 
+	/** Servidor: quando o item não consumível pode ser usado de novo (tempo de mundo). */
+	TMap<TWeakObjectPtr<const UCatalogItemDefinition>, double> NextUseTimes;
+
 	bool bReplicatedBroadcastPending = false;
 
 	/** Loga e devolve false sem autoridade (BlueprintAuthorityOnly não protege chamadas C++). */

@@ -284,22 +284,15 @@ void USampleSaveMenuWidget::RefreshSlots()
 
 	TArray<FName> Names(FixedSlots, UE_ARRAY_COUNT(FixedSlots));
 
-	// Demais .sav do disco (ex.: Autosave, slots gravados por Blueprint): só os que o subsystem lê.
-	UCatalogSaveSubsystem* SaveSubsystem = FindSaveSubsystem(this);
-	ISaveGameSystem* SaveSystem = IPlatformFeaturesModule::Get().GetSaveGameSystem();
-	TArray<FString> FoundFiles;
-	if (SaveSubsystem && SaveSystem)
+	// Demais slots do disco (ex.: Autosave, slots gravados por Blueprint): a lista e o filtro de nomes são do subsystem.
+	if (UCatalogSaveSubsystem* SaveSubsystem = FindSaveSubsystem(this))
 	{
-		SaveSystem->GetSaveGameNames(FoundFiles, SaveUserIndex);
-	}
-	for (const FString& FileName : FoundFiles)
-	{
-		// FName compara sem caixa, como o subsystem (que grava os arquivos em minúsculas).
-		const FName Name(*FileName);
-		FCatalogSavePayload Ignored;
-		if (!Names.Contains(Name) && UCatalogSaveSubsystem::IsValidSlotName(Name) && SaveSubsystem->LoadPayloadFromSlot(Name, Ignored))
+		for (const FCatalogSaveSlotInfo& Info : SaveSubsystem->ListSaveSlots())
 		{
-			Names.Add(Name);
+			if (Info.State != ECatalogSaveSlotState::Unreadable)
+			{
+				Names.AddUnique(Info.SlotName);
+			}
 		}
 	}
 
@@ -309,6 +302,9 @@ void USampleSaveMenuWidget::RefreshSlots()
 		Row->Setup(Name, this);
 		SlotList->AddChildToVerticalBox(Row)->SetPadding(FMargin(0.f, 4.f));
 	}
+
+	// O botão clicado (com o foco) acabou de sair da árvore: sem devolver o foco ao menu, Tab/Esc morrem em UI-only.
+	SetKeyboardFocus();
 }
 
 FReply USampleSaveMenuWidget::NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent)

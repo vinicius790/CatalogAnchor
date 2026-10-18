@@ -131,6 +131,23 @@ bool FCatalogEditorItemIssuesTest::RunTest(const FString& Parameters)
 	}
 	{
 		UCatalogItemDefinition* Item = MakeValidItem();
+		const float Invalid[] = { -1.f, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::infinity() };
+		for (const float Value : Invalid)
+		{
+			Item->Weight = Value;
+			TestEqual(TEXT("Weight negativo/NaN/infinito: 1 erro"), UCatalogItemDefinitionValidator::GetIssues(*Item).Errors.Num(), 1);
+		}
+		Item->Weight = 0.f;
+		for (const float Value : Invalid)
+		{
+			Item->UseCooldownSeconds = Value;
+			TestEqual(TEXT("UseCooldownSeconds negativo/NaN/infinito: 1 erro"), UCatalogItemDefinitionValidator::GetIssues(*Item).Errors.Num(), 1);
+		}
+		Item->UseCooldownSeconds = 0.f;
+		TestEqual(TEXT("Weight 0 e cooldown 0 (sem limite): 0 erros"), UCatalogItemDefinitionValidator::GetIssues(*Item).Errors.Num(), 0);
+	}
+	{
+		UCatalogItemDefinition* Item = MakeValidItem();
 		Item->Icon.Reset();
 		const FCatalogValidationIssues Issues = UCatalogItemDefinitionValidator::GetIssues(*Item);
 		TestEqual(TEXT("Icon nulo: 0 erros"), Issues.Errors.Num(), 0);
@@ -173,6 +190,16 @@ bool FCatalogEditorAbilityIssuesTest::RunTest(const FString& Parameters)
 			Ability->CooldownSeconds = Cooldown;
 			TestEqual(TEXT("Cooldown negativo/NaN/infinito: 1 erro"),
 				UCatalogAbilityDefinitionValidator::GetIssues(*Ability).Errors.Num(), 1);
+		}
+	}
+	{
+		UCatalogAbilityDefinition* Ability = MakeValidAbility();
+		UCatalogAbility_Dash* Dash = CastChecked<UCatalogAbility_Dash>(Ability->Behavior);
+		const float Invalid[] = { -1.f, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::infinity() };
+		for (const float Strength : Invalid)
+		{
+			Dash->Strength = Strength;
+			TestEqual(TEXT("Dash Strength negativa/NaN/infinita: 1 erro"), UCatalogAbilityDefinitionValidator::GetIssues(*Ability).Errors.Num(), 1);
 		}
 	}
 	{

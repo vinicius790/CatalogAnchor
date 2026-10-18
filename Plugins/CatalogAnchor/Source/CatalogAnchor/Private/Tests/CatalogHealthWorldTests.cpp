@@ -462,6 +462,86 @@ bool FCatalogAbilityMeleeDestroyedTargetTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCatalogHealthPresetBeforeBeginPlayTest, "CatalogAnchor.Health.SetHealthBeforeBeginPlayPersists",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::CommandletContext | EAutomationTestFlags::ProductFilter)
+
+bool FCatalogHealthPresetBeforeBeginPlayTest::RunTest(const FString& Parameters)
+{
+	using namespace CatalogHealthWorldTestsImpl;
+	if (CatalogTestGuards::ShouldSkipDuringPIE(*this))
+	{
+		return true;
+	}
+	if (!TestNotNull(TEXT("GEngine"), GEngine))
+	{
+		return false;
+	}
+	FScopedTestWorld TestWorld;
+
+	// Spawn adiado + restaurar save: SetHealth antes do BeginPlay não pode virar vida cheia.
+	AActor* Actor = TestWorld.World->SpawnActor<AActor>();
+	UCatalogHealthComponent* Health = NewObject<UCatalogHealthComponent>(Actor);
+	Health->MaxHealth = 250.f;
+	Health->SetHealth(40.f);
+	Health->RegisterComponent(); // BeginPlay
+	TestEqual(TEXT("vida restaurada sobrevive ao BeginPlay"), Health->GetHealth(), 40.f);
+
+	// Controle: sem SetHealth prévio o BeginPlay inicia em MaxHealth.
+	UCatalogHealthComponent* Fresh = NewObject<UCatalogHealthComponent>(Actor);
+	Fresh->MaxHealth = 250.f;
+	Fresh->RegisterComponent();
+	TestEqual(TEXT("sem preset: MaxHealth"), Fresh->GetHealth(), 250.f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCatalogHealthHealReturnReentrantTest, "CatalogAnchor.Health.HealReturnIgnoresReentrantListener",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::CommandletContext | EAutomationTestFlags::ProductFilter)
+
+bool FCatalogHealthHealReturnReentrantTest::RunTest(const FString& Parameters)
+{
+	using namespace CatalogHealthWorldTestsImpl;
+	if (CatalogTestGuards::ShouldSkipDuringPIE(*this))
+	{
+		return true;
+	}
+	if (!TestNotNull(TEXT("GEngine"), GEngine))
+	{
+		return false;
+	}
+	FScopedTestWorld TestWorld;
+	const FHealthFixture F = SpawnWithHealth(TestWorld.World, 100.f);
+	F.Health->SetHealth(50.f);
+
+	// O OnHealthChanged da cura (50→70) causa 30 de dano: o retorno é o que a cura deu, não o saldo final.
+	F.Listener->ExtraDamageOnChange = 30.f;
+	TestEqual(TEXT("Heal devolve a cura aplicada"), F.Health->Heal(20.f), 20.f);
+	TestEqual(TEXT("saldo final após o dano reentrante"), F.Health->GetHealth(), 40.f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCatalogHealthSetHealthExactTest, "CatalogAnchor.Health.SetHealthRestoresExactValue",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::CommandletContext | EAutomationTestFlags::ProductFilter)
+
+bool FCatalogHealthSetHealthExactTest::RunTest(const FString& Parameters)
+{
+	using namespace CatalogHealthWorldTestsImpl;
+	if (CatalogTestGuards::ShouldSkipDuringPIE(*this))
+	{
+		return true;
+	}
+	if (!TestNotNull(TEXT("GEngine"), GEngine))
+	{
+		return false;
+	}
+	FScopedTestWorld TestWorld;
+	const FHealthFixture F = SpawnWithHealth(TestWorld.World, 100.f);
+
+	// 100 + (33.3f - 100) arredonda para 33.300003f: o valor do save tem de voltar bit a bit.
+	F.Health->SetHealth(33.3f);
+	TestTrue(TEXT("valor exato, sem erro de arredondamento"), F.Health->GetHealth() == 33.3f);
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCatalogHealthFirstChangeAtDefaultTest, "CatalogAnchor.Health.ClientFirstChangeKeepsRealDelta",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::CommandletContext | EAutomationTestFlags::ProductFilter)
 

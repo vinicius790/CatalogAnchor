@@ -15,7 +15,7 @@
 | DataValidation + ToolMenus + Asset Registry + `UFactory` | validadores, factories e menu do Editor |
 | Enhanced Input (só no sample) | ações e mapping context criados em código |
 | UMG (só no sample) | HUD e menu de saves montados em C++ (`WidgetTree->ConstructWidget`) |
-| Automation Framework | 67 testes C++: lógica pura e mundo (`UWorld` próprio: vida, interação, inventário, save), todos passando na 5.8.3 |
+| Automation Framework | 73 testes C++: lógica pura e mundo (`UWorld` próprio: vida, interação, inventário, save), todos passando na 5.8.3 |
 | Python ≥ 3.10, pytest, ruff | validador, lint de C++, `tools/ue.py`, `tools/get_msvc.py`, testes do tooling |
 | GitHub Actions | `ci.yml`: ruff + validador + pytest com JUnit (Ubuntu/Windows, Python 3.10–3.14); `ue.yml`: build + automação em runner self-hosted; `release.yml`: release por tag `v*`; Dependabot |
 

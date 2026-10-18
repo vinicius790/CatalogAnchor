@@ -5,10 +5,10 @@ Cada item tem passos, o resultado esperado (tirado do código atual) e um status
 Os testes automáticos (`CatalogAnchor.*`) cobrem a lógica sem rede; este roteiro cobre o que só
 aparece com servidor e clientes separados.
 
-> **Status geral (reconferido em 2026-10-18): parcial.** As tabelas do Dump (dedicado + 2 clientes; listen + 1 cliente) foram reproduzidas. Executado de verdade, headless (`-nullrhi`, sem teclado nem mouse):
-> servidor dedicado + 2 clientes e listen server + 1 cliente, com `catalog.Debug.Dump` (ver 2.0). Esse comando
-> prova conexão, spawn, replicação de vida e o registro de participantes do save. Tudo que depende de input
-> (segurar E, golpe, Shift, F5/F9) está marcado `bloqueado` com o motivo. UE 5.8.3, Win64 Development Editor.
+> **Status geral (2026-10-18): MP-03, MP-04, MP-06 e a restauração do MP-07 executados de verdade, headless.** `py -3 tools/mp_run.py --project <uproject> --case all`
+> sobe servidor dedicado + 2 clientes (e um standalone para o MP-07), roda um roteiro de comandos de console que chamam os mesmos
+> pontos de entrada do input (`BeginInteract`/`EndInteract`, `TryActivateAbility`) e imprime PASS/FAIL com a linha de log:
+> 27 de 27 predicados passaram na última execução (UE 5.8.3, Win64 Development Editor, `-nullrhi`). Ainda sem input humano: F5/F9 pelas teclas, mouse/câmera reais, HUD e listen server para MP-03/04/06.
 
 ## 0. Preparação
 
@@ -92,7 +92,13 @@ Observado (linhas `[Dump]` dos logs):
 | Listen (host) | ListenServer | 2 pawns + 2 bonecos | pawn do host (`Locally=1`) | **2** (inventário + `USamplePlayerSaveComponent` do host) |
 | Cliente (listen) | Client | 2 pawns + 2 bonecos | exatamente 1 | 0 |
 
-Limite: o headless não tem input, então os inventários ficam vazios (`Items=0`) e nenhuma vida muda. Python
+Comandos não-Shipping usados pelos roteiros (`CatalogDebugCommands.cpp`; `catalog.Save.Now|Load|List|Delete` em `CatalogConsoleCommands.cpp`):
+`Dump [rótulo]` (cada linha ganha `Loc=`, `Target=`, `Focused=`, `Holding=`, `Cd=[tag:segundos]`, `Snap=<rótulo>`, e há uma linha `Interactable=` com `Prompt=`/`Blocked=`/`Duration=`),
+`Hurt`, `GiveItem`, `Respawn`, `Interact`, `Aim <parte do nome> [jogador]` (servidor: leva o pawn a 150 cm e acha o pitch em que o raio da câmera passa pelo centro do alvo; `ClientSetRotation` mira o cliente dono),
+`Hold Begin|End` e `Ability <tag|sufixo>` (rodam no pawn LOCAL: no cliente vão por Server RPC, o caminho do input real) e `Schedule <s ou instante Unix UTC> <cmd>`
+(instante absoluto alinha servidor e clientes pelo relógio da máquina). Nomes de atores replicados (`SampleChestActor_0/1`) podem diferir entre servidor e cliente: o driver identifica o baú no cliente pelo prompt.
+
+Limite: sem comandos o headless não tem input, então os inventários ficam vazios (`Items=0`) e nenhuma vida muda. Python
 (`-ExecutePythonScript`/`EditorLevelLibrary.get_game_world`) não serve em `-game`/`-server`: o primeiro é recusado fora do editor
 ("cannot be used outside of the editor") e o segundo derruba o processo (access violation em EditorScriptingUtilities).
 
@@ -146,7 +152,7 @@ Esperado:
 - No dedicado (1B) nenhum foco é anunciado no servidor (não há jogador local lá).
 - Ao pegar o pickup, o foco some na hora para quem mirava (alvo destruído).
 
-status: bloqueado: exige mira com câmera e interação (input). Só o pré-requisito foi visto: em cada cliente exatamente 1 pawn tem `Locally=1`; no dedicado nenhum (não há jogador local).
+status: executado/ok (headless, `tools/mp_run.py --case 03`). Servidor dedicado: o pawn mirado tem `Target=<baú> Focused=0` (o dedicado não anuncia foco). Cliente dono: pawn local `Target=<baú> Focused=1`. Outro cliente: todos os pawns com `Target=None Focused=0` (OwnerOnly). NÃO verificado: o marcador visual/HUD e o foco sumir ao coletar o pickup (sem renderização).
 
 ### MP-04 Interação com hold (baú, 1,5 s)
 
@@ -164,7 +170,7 @@ Esperado:
 - (2) e (3) O hold é cancelado (`EndInteract` / alvo mudou) e nada é coletado.
 - (4) Sem a chave: prompt "Trancado", hold não começa. Com a chave: abre normalmente.
 
-status: bloqueado: hold de 1,5 s no baú exige segurar E com mira; sem input no headless e sem comando de console para `BeginInteract`.
+status: executado/ok (`--case 04`): `Hold Begin` no cliente (Server RPC) devolveu `resultado=1`. Soltar em 1 s: baú segue "Abrir baú" `Blocked=0`, inventário vazio no servidor. Segurar 4 s: baú vira "Baú vazio" `Blocked=1` no servidor e nos 2 clientes, o dono tem 13 itens (3 poções + 10 gemas) no servidor e no cliente dono, o outro cliente vê o pawn do dono com `Items=0` (OwnerOnly). Baú trancado sem chave: "Trancado (precisa de Chave)", `Blocked=1`, inventário continua em 13. NÃO verificado: barra de hold no HUD, desviar a mira no meio do hold, abrir o trancado com a chave.
 
 ### MP-05 Vida, morte e respawn
 
@@ -202,7 +208,7 @@ Esperado:
 - A montagem/efeito do golpe aparece nas outras janelas (multicast não confiável: perda ocasional
   sob perda de pacote é esperada).
 
-status: bloqueado: Shift/clique são input; sem comando de console para ativar habilidade.
+status: executado/ok (`--case 06`). Dash nos 2 clientes: 1ª ativação `resultado=1`, 2ª `resultado=0`; log do servidor `Habilidade 'Catalog.Ability.Dash' falhou ... Cooldown.`; os 2 pawns andaram > 100 cm no servidor; o pawn local mostra `Cd=[Catalog.Ability.Dash:>0]` e o pawn alheio `0.00` (OwnerOnly). Melee a 150 cm do boneco: vida 75 -> 50 igual no servidor e nos 2 clientes. NÃO verificado: HUD de cooldown, efeito/montagem multicast, cooldown após respawn.
 
 ### MP-07 Persistência (save/load)
 
@@ -218,7 +224,7 @@ Esperado:
 - O cliente 2 mantém o próprio inventário; o save do host não o altera.
 - O arquivo `SampleProject/Saved/SaveGames/Quick.sav` tem data de modificação do passo 1.
 
-status: executado/parcial. Conferido em 2026-10-18 (standalone `-game`, headless): `catalog.Save.Now MPT` gravou `Saved/SaveGames/mpt.sav` (schema v2, `SaveParticipants=2`), `catalog.Save.List` listou 1 slot e `catalog.Save.Load MPT` carregou. NÃO verificado: F5/F9 (input), restauração de posição/vida/inventário depois de mudar o estado, reiniciar o PIE e o cliente remoto (bloqueado: sem input).
+status: executado/ok para a restauração (standalone `-game`, `--case 07`): `GiveItem Gem 5` + `Hurt 30` + `Aim` no baú, `catalog.Save.Now MPT`; depois `GiveItem Potion 4`, `Hurt 20` e outra posição (Items 9, Health 50/100, Loc diferente); `catalog.Save.Load MPT` devolveu Health 70/100, Items 5 e a posição salva. Antes: `Save.Now`/`List`/`Load` gravaram `mpt.sav` (schema v2, `SaveParticipants=2`). NÃO verificado: F5/F9 por tecla, reiniciar o PIE e o cliente remoto no listen.
 
 ## 3. Testes automáticos de mundo relacionados
 

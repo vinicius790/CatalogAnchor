@@ -1,4 +1,6 @@
 ﻿// Copyright 2026 Geraliza Castlevania. MIT License.
+#include "CatalogAbilityComponent.h"
+#include "CatalogAbilityDefinition.h"
 #include "CatalogAnchor.h"
 #include "CatalogHealthComponent.h"
 #include "CatalogInteractionComponent.h"
@@ -16,6 +18,7 @@
 #include "GameFramework/DamageType.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
+#include "GameFramework/SpringArmComponent.h"
 #include "HAL/IConsoleManager.h"
 #include "ICatalogInteractable.h"
 #include "Kismet/GameplayStatics.h"
@@ -39,7 +42,7 @@ namespace CatalogDebugCommandsPrivate
 	}
 
 	/** catalog.Debug.Dump: uma linha por ator com vida/inventário, o que ESTA máquina enxerga (compare servidor x clientes). */
-	void DumpWorld(UWorld* World)
+	void DumpWorld(UWorld* World, const FString& Label = FString())
 	{
 		if (!World)
 		{
@@ -69,14 +72,46 @@ namespace CatalogDebugCommandsPrivate
 					Stacks += FString::Printf(TEXT("%s x%d "), Stack.Item ? *Stack.Item->GetName() : TEXT("?"), Stack.Quantity);
 				}
 			}
-			UE_LOG(LogCatalogAnchor, Display, TEXT("[Dump] NetMode=%s Actor=%s Health=%.0f/%.0f Dead=%d Items=%d Locally=%d Authority=%d Stacks=[%s]"),
+			// Extras de rede/foco/habilidade (MP-03/04/06): alvo e foco anunciado só existem para o dono; cooldown idem.
+			const FVector Loc = Actor->GetActorLocation();
+			FString Extra = FString::Printf(TEXT(" Loc=%.0f,%.0f,%.0f"), Loc.X, Loc.Y, Loc.Z);
+			if (const UCatalogInteractionComponent* Interaction = Actor->FindComponentByClass<UCatalogInteractionComponent>())
+			{
+				Extra += FString::Printf(TEXT(" Target=%s Focused=%d Holding=%d"), *GetNameSafe(Interaction->CurrentTarget.Get()),
+					Interaction->IsFocusAnnounced(), Interaction->IsInteracting());
+			}
+			if (const UCatalogAbilityComponent* Abilities = Actor->FindComponentByClass<UCatalogAbilityComponent>())
+			{
+				FString Cooldowns;
+				for (const UCatalogAbilityDefinition* Definition : Abilities->GrantedAbilities)
+				{
+					if (Definition)
+					{
+						Cooldowns += FString::Printf(TEXT("%s:%.2f "), *Definition->AbilityTag.ToString(), Abilities->GetCooldownRemaining(Definition->AbilityTag));
+					}
+				}
+				Extra += FString::Printf(TEXT(" Cd=[%s]"), *Cooldowns.TrimEnd());
+			}
+			UE_LOG(LogCatalogAnchor, Display, TEXT("[Dump] NetMode=%s Actor=%s Health=%.0f/%.0f Dead=%d Items=%d Locally=%d Authority=%d Stacks=[%s]%s Snap=%s"),
 				NetModeName, *Actor->GetName(), Health ? Health->GetHealth() : -1.f, Health ? Health->MaxHealth : -1.f,
-				Health ? Health->IsDead() : 0, Items, bLocally, Actor->HasAuthority(), *Stacks.TrimEnd());
+				Health ? Health->IsDead() : 0, Items, bLocally, Actor->HasAuthority(), *Stacks.TrimEnd(), *Extra, *Label);
+		}
+		// Uma linha por interagível: prompt/bloqueio/duração como o jogador local os lê (instigador = pawn local).
+		AActor* const Viewer = UGameplayStatics::GetPlayerPawn(World, 0);
+		for (TActorIterator<AActor> It(World); It; ++It)
+		{
+			const AActor* Actor = *It;
+			if (Actor->GetClass()->ImplementsInterface(UCatalogInteractable::StaticClass()))
+			{
+				UE_LOG(LogCatalogAnchor, Display, TEXT("[Dump] NetMode=%s Interactable=%s Prompt=[%s] Blocked=%d Duration=%.1f Snap=%s"), NetModeName,
+					*Actor->GetName(), *ICatalogInteractable::Execute_GetInteractionPrompt(Actor).ToString(),
+					ICatalogInteractable::Execute_IsInteractionBlocked(Actor, Viewer), ICatalogInteractable::Execute_GetInteractionDuration(Actor), *Label);
+			}
 		}
 		const UGameInstance* GameInstance = World->GetGameInstance();
 		const UCatalogSaveSubsystem* Save = GameInstance ? GameInstance->GetSubsystem<UCatalogSaveSubsystem>() : nullptr;
-		UE_LOG(LogCatalogAnchor, Display, TEXT("[Dump] NetMode=%s Atores=%d SaveParticipants=%d"), NetModeName, Actors,
-			Save ? Save->GetParticipantCount() : -1);
+		UE_LOG(LogCatalogAnchor, Display, TEXT("[Dump] NetMode=%s Atores=%d SaveParticipants=%d Snap=%s"), NetModeName, Actors,
+			Save ? Save->GetParticipantCount() : -1, *Label);
 	}
 
 	/** Pawn do N-ésimo jogador (0 = primeiro) que tem controller; só onde há autoridade. */
@@ -155,9 +190,124 @@ namespace CatalogDebugCommandsPrivate
 		}
 	}
 
+	/** Ator mais próximo do pawn cujo nome contém Filter (fora o próprio pawn); nullptr se não houver. */
+	AActor* FindActorByName(UWorld* World, const APawn* Pawn, const FString& Filter, bool bInteractableOnly)
+	{
+		AActor* Target = nullptr;
+		float BestDistance = TNumericLimits<float>::Max();
+		for (TActorIterator<AActor> It(World); It; ++It)
+		{
+			AActor* Candidate = *It;
+			if (Candidate == Pawn || !Candidate->GetName().Contains(Filter)
+				|| (bInteractableOnly && !Candidate->GetClass()->ImplementsInterface(UCatalogInteractable::StaticClass())))
+			{
+				continue;
+			}
+			const float Distance = FVector::Dist(Candidate->GetActorLocation(), Pawn->GetActorLocation());
+			if (Distance < BestDistance)
+			{
+				BestDistance = Distance;
+				Target = Candidate;
+			}
+		}
+		return Target;
+	}
+
+	/**
+	 * Leva o pawn a 150 cm do alvo (de -X, de pé no mesmo Z) e acha o pitch em que o raio da câmera (braço + SocketOffset,
+	 * é de lá que o trace de interação mira) passa pelo centro do alvo. ClientSetRotation força a mira no cliente dono.
+	 */
+	void AimAt(APawn* Pawn, const AActor* Target)
+	{
+		const FVector Center = Target->GetComponentsBoundingBox().GetCenter();
+		const USpringArmComponent* Arm = Pawn->FindComponentByClass<USpringArmComponent>();
+		const FVector Socket = Arm ? Arm->SocketOffset : FVector(0.f, 0.f, Pawn->BaseEyeHeight);
+		const float ArmLength = Arm ? Arm->TargetArmLength : 0.f;
+		const FVector Destination(Center.X - 150.f, Center.Y - Socket.Y, Pawn->GetActorLocation().Z);
+		Pawn->SetActorLocationAndRotation(Destination, FRotator::ZeroRotator, false, nullptr, ETeleportType::TeleportPhysics);
+		FRotator Aim = FRotator::ZeroRotator;
+		float BestError = TNumericLimits<float>::Max();
+		for (float Pitch = -85.f; Pitch <= 85.f; Pitch += 0.25f)
+		{
+			const FRotationMatrix Frame(FRotator(Pitch, 0.f, 0.f));
+			const FVector Camera = Destination + Frame.TransformVector(FVector(-ArmLength, Socket.Y, Socket.Z));
+			const float Error = FVector::CrossProduct(Center - Camera, Frame.GetUnitAxis(EAxis::X)).Size();
+			if (Error < BestError)
+			{
+				BestError = Error;
+				Aim = FRotator(Pitch, 0.f, 0.f);
+			}
+		}
+		if (APlayerController* Controller = Cast<APlayerController>(Pawn->GetController()))
+		{
+			Controller->SetControlRotation(Aim);
+			Controller->ClientSetRotation(Aim);
+		}
+		UE_LOG(LogCatalogAnchor, Display, TEXT("[Debug] Aim %s alvo=%s pitch=%.1f erro=%.1f"), *Pawn->GetName(), *Target->GetName(), Aim.Pitch, BestError);
+	}
+
+	/** catalog.Debug.Aim <parte do nome> [jogador]: AimAt no ator mais próximo (qualquer ator, ex.: o boneco) (servidor). */
+	void Aim(const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
+	{
+		APawn* Pawn = FindPlayerPawn(World, PlayerIndexArg(Args, 1), Ar);
+		if (!Pawn || Args.Num() < 1)
+		{
+			return;
+		}
+		if (const AActor* Target = FindActorByName(World, Pawn, Args[0], false))
+		{
+			AimAt(Pawn, Target);
+		}
+		else
+		{
+			UE_LOG(LogCatalogAnchor, Display, TEXT("[Debug] Aim: nenhum ator '%s'."), *Args[0]);
+		}
+	}
+
+	/** catalog.Debug.Hold Begin|End: BeginInteract/EndInteract do pawn LOCAL (cliente: Server RPC, o caminho do input real). */
+	void Hold(const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
+	{
+		APawn* Pawn = World ? UGameplayStatics::GetPlayerPawn(World, 0) : nullptr;
+		UCatalogInteractionComponent* Interaction = Pawn ? Pawn->FindComponentByClass<UCatalogInteractionComponent>() : nullptr;
+		if (!Interaction || Args.Num() < 1)
+		{
+			Ar.Log(TEXT("uso: catalog.Debug.Hold Begin|End (precisa de pawn local com interação)"));
+			return;
+		}
+		const bool bBegin = Args[0].Equals(TEXT("Begin"), ESearchCase::IgnoreCase);
+		bool bOk = false;
+		if (bBegin)
+		{
+			bOk = Interaction->BeginInteract();
+		}
+		else
+		{
+			Interaction->EndInteract();
+		}
+		UE_LOG(LogCatalogAnchor, Display, TEXT("[Debug] Hold %s NetMode=%s pawn=%s alvo=%s resultado=%d"), bBegin ? TEXT("Begin") : TEXT("End"),
+			NetModeText(World->GetNetMode()), *Pawn->GetName(), *GetNameSafe(Interaction->CurrentTarget.Get()), bOk);
+	}
+
+	/** catalog.Debug.Ability <tag ou sufixo, ex.: Dash>: TryActivateAbility do pawn LOCAL (cliente: Server RPC). */
+	void Ability(const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
+	{
+		APawn* Pawn = World ? UGameplayStatics::GetPlayerPawn(World, 0) : nullptr;
+		UCatalogAbilityComponent* Abilities = Pawn ? Pawn->FindComponentByClass<UCatalogAbilityComponent>() : nullptr;
+		if (!Abilities || Args.Num() < 1)
+		{
+			Ar.Log(TEXT("uso: catalog.Debug.Ability <tag> (precisa de pawn local com habilidades)"));
+			return;
+		}
+		const FString TagName = Args[0].Contains(TEXT(".")) ? Args[0] : TEXT("Catalog.Ability.") + Args[0];
+		const FGameplayTag Tag = FGameplayTag::RequestGameplayTag(FName(*TagName), false);
+		const bool bOk = Abilities->TryActivateAbility(Tag);
+		UE_LOG(LogCatalogAnchor, Display, TEXT("[Debug] Ability %s NetMode=%s pawn=%s resultado=%d cooldown=%.2f"), *TagName,
+			NetModeText(World->GetNetMode()), *Pawn->GetName(), bOk, Abilities->GetCooldownRemaining(Tag));
+	}
+
 	/**
 	 * catalog.Debug.Interact <parte do nome do ator> [hold] [jogador]: leva o pawn a 150 cm do interagível mais próximo
-	 * (nome contém o filtro), congela o movimento e interage (tap = TryInteract; hold = BeginInteract, completa no tick).
+	 * (nome contém o filtro), mira (AimAt) e interage (tap = TryInteract; hold = BeginInteract, completa no tick).
 	 */
 	void Interact(const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
 	{
@@ -169,47 +319,20 @@ namespace CatalogDebugCommandsPrivate
 			return;
 		}
 		const FString Filter = Args.Num() > 0 ? Args[0] : FString();
-		AActor* Target = nullptr;
-		float BestDistance = TNumericLimits<float>::Max();
-		for (TActorIterator<AActor> It(World); It; ++It)
-		{
-			AActor* Candidate = *It;
-			if (Candidate == Pawn || !Candidate->GetClass()->ImplementsInterface(UCatalogInteractable::StaticClass())
-				|| !Candidate->GetName().Contains(Filter))
-			{
-				continue;
-			}
-			const float Distance = FVector::Dist(Candidate->GetActorLocation(), Pawn->GetActorLocation());
-			if (Distance < BestDistance)
-			{
-				BestDistance = Distance;
-				Target = Candidate;
-			}
-		}
+		AActor* Target = FindActorByName(World, Pawn, Filter, true);
 		if (!Target)
 		{
 			UE_LOG(LogCatalogAnchor, Display, TEXT("[Debug] Interact: nenhum interagível '%s'."), *Filter);
 			return;
 		}
-		// Olho do pawn à altura do centro do alvo, olhando para +X (o trace de mira usa o olho e a rotação do controller).
-		FVector Destination = Target->GetComponentsBoundingBox().GetCenter() - FVector(150.f, 0.f, 0.f);
-		Destination.Z -= Pawn->BaseEyeHeight;
-		Pawn->SetActorLocation(Destination, false, nullptr, ETeleportType::TeleportPhysics);
-		if (AController* Controller = Pawn->GetController())
-		{
-			Controller->SetControlRotation(FRotator::ZeroRotator);
-		}
-		if (const ACharacter* Character = Cast<ACharacter>(Pawn))
-		{
-			Character->GetCharacterMovement()->SetMovementMode(MOVE_None);
-		}
+		AimAt(Pawn, Target);
 		const AActor* Focus = Interaction->RefreshTarget();
 		const bool bOk = bHold ? Interaction->BeginInteract() : Interaction->TryInteract();
 		UE_LOG(LogCatalogAnchor, Display, TEXT("[Debug] Interact %s alvo=%s foco=%s modo=%s resultado=%d"), *Pawn->GetName(), *Target->GetName(),
 			*GetNameSafe(Focus), bHold ? TEXT("hold") : TEXT("tap"), bOk);
 	}
 
-	/** catalog.Debug.Schedule <segundos> <comando...>: roda o console command depois do atraso no mundo de jogo atual. */
+	/** catalog.Debug.Schedule <segundos ou Unix UTC> <comando...>: roda o console command depois do atraso no mundo de jogo atual. */
 	void Schedule(const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
 	{
 		if (Args.Num() < 2)
@@ -217,7 +340,13 @@ namespace CatalogDebugCommandsPrivate
 			Ar.Log(TEXT("uso: catalog.Debug.Schedule <segundos> <comando...>"));
 			return;
 		}
-		const float Delay = FMath::Max(0.1f, FCString::Atof(*Args[0]));
+		// Segundos de atraso; valor > 1e9 = instante absoluto (Unix, UTC): processos de uma mesma máquina se alinham pelo relógio.
+		double Seconds = FCString::Atod(*Args[0]);
+		if (Seconds > 1e9)
+		{
+			Seconds -= (FDateTime::UtcNow() - FDateTime::FromUnixTimestamp(0)).GetTotalSeconds();
+		}
+		const float Delay = FMath::Max(0.1, Seconds);
 		FString Command = FString::Join(TArrayView<const FString>(Args).Slice(1, Args.Num() - 1), TEXT(" "));
 		FTSTicker::GetCoreTicker().AddTicker(TEXT("CatalogDebugSchedule"), Delay, [Command](float)
 		{
@@ -242,7 +371,7 @@ namespace CatalogDebugCommandsPrivate
 	{
 		if (Args.Num() < 2)
 		{
-			DumpWorld(World);
+			DumpWorld(World, Args.Num() == 1 ? Args[0] : FString());
 			return;
 		}
 		const int32 Count = FMath::Clamp(FCString::Atoi(*Args[0]), 1, 1000);
@@ -285,6 +414,18 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCatalogDebugRespawnComma
 static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCatalogDebugInteractCommand(
 	TEXT("catalog.Debug.Interact"), TEXT("catalog.Debug.Interact <parte do nome> [hold] [jogador]: leva o pawn ao interagível e interage (servidor)."),
 	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(&CatalogDebugCommandsPrivate::Interact));
+
+static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCatalogDebugAimCommand(
+	TEXT("catalog.Debug.Aim"), TEXT("catalog.Debug.Aim <parte do nome> [jogador]: leva o pawn a 150 cm do ator e mira nele (servidor + ClientSetRotation)."),
+	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(&CatalogDebugCommandsPrivate::Aim));
+
+static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCatalogDebugHoldCommand(
+	TEXT("catalog.Debug.Hold"), TEXT("catalog.Debug.Hold Begin|End: BeginInteract/EndInteract do pawn local (cliente: via Server RPC)."),
+	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(&CatalogDebugCommandsPrivate::Hold));
+
+static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCatalogDebugAbilityCommand(
+	TEXT("catalog.Debug.Ability"), TEXT("catalog.Debug.Ability <tag ou sufixo>: TryActivateAbility do pawn local (cliente: via Server RPC)."),
+	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(&CatalogDebugCommandsPrivate::Ability));
 
 static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCatalogDebugScheduleCommand(
 	TEXT("catalog.Debug.Schedule"), TEXT("catalog.Debug.Schedule <segundos> <comando...>: roda o comando de console depois do atraso."),

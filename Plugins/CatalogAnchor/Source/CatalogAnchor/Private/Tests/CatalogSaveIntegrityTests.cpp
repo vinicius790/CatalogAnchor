@@ -6,7 +6,10 @@
 #include "Engine/Engine.h"
 #include "Engine/GameInstance.h"
 #include "Kismet/GameplayStatics.h"
+#include "GenericPlatform/GenericPlatformFile.h"
+#include "HAL/PlatformFileManager.h"
 #include "Misc/AutomationTest.h"
+#include "Misc/Paths.h"
 #include "UObject/Package.h"
 #include "UObject/UnrealType.h"
 
@@ -463,6 +466,75 @@ bool FCatalogSaveReservedNamesTest::RunTest(const FString& Parameters)
 	TestFalse(TEXT("DeleteSlot recusa nome inválido"), Scratch.Save->DeleteSlot(FName(TEXT("../Config/DefaultGame"))));
 	return true;
 }
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCatalogSaveRotationGapTest, "CatalogAnchor.Save.Integrity.RotationWithGapKeepsBackups", CATALOG_TEST_FLAGS)
+
+bool FCatalogSaveRotationGapTest::RunTest(const FString& Parameters)
+{
+	using namespace CatalogSaveIntegrityTestsPrivate;
+	FScratch Scratch(3);
+
+	for (int32 Yaw = 1; Yaw <= 3; ++Yaw)
+	{
+		Scratch.SaveYaw(static_cast<float>(Yaw)); // slot=3, _bak=2, _bak2=1
+	}
+	// Buraco no meio (backup apagado à mão): a rotação por renomeação não pode perder o mais velho nem o atual.
+	UGameplayStatics::DeleteGameInSlot(Scratch.Backup(1), UserIndex);
+	TestTrue(TEXT("save 4"), Scratch.SaveYaw(4.f));
+	TestEqual(TEXT("slot = save 4"), RawYaw(Scratch.Primary()), 4.f);
+	TestEqual(TEXT("_bak = save 3 (o atual de antes)"), RawYaw(Scratch.Backup(1)), 3.f);
+	TestEqual(TEXT("_bak3 = save 1 (o mais velho foi deslocado, não perdido)"), RawYaw(Scratch.Backup(3)), 1.f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCatalogSaveDeleteStrayBackupsTest, "CatalogAnchor.Save.Integrity.DeleteAbsentSlotCleansStrayBackups", CATALOG_TEST_FLAGS)
+
+bool FCatalogSaveDeleteStrayBackupsTest::RunTest(const FString& Parameters)
+{
+	using namespace CatalogSaveIntegrityTestsPrivate;
+	FScratch Scratch(3);
+
+	for (int32 Yaw = 1; Yaw <= 3; ++Yaw)
+	{
+		Scratch.SaveYaw(static_cast<float>(Yaw));
+	}
+	UGameplayStatics::DeleteGameInSlot(Scratch.Primary(), UserIndex); // principal sumiu; backups ficaram soltos
+	TestTrue(TEXT("backups soltos existem"), FileExists(Scratch.Backup(1)) && FileExists(Scratch.Backup(2)));
+
+	TestFalse(TEXT("DeleteSlot de slot ausente devolve false"), Scratch.Save->DeleteSlot(Scratch.Slot));
+	TestFalse(TEXT("_bak solto limpo"), FileExists(Scratch.Backup(1)));
+	TestFalse(TEXT("_bak2 solto limpo"), FileExists(Scratch.Backup(2)));
+	return true;
+}
+
+#if PLATFORM_WINDOWS
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCatalogSaveLockedPrimaryTest, "CatalogAnchor.Save.Integrity.LockedPrimaryDoesNotFallBackToBackup", CATALOG_TEST_FLAGS)
+
+bool FCatalogSaveLockedPrimaryTest::RunTest(const FString& Parameters)
+{
+	using namespace CatalogSaveIntegrityTestsPrivate;
+	FScratch Scratch(2);
+	Scratch.SaveYaw(1.f);
+	Scratch.SaveYaw(2.f); // slot=2, _bak=1
+
+	// Abertura exclusiva (append: não trunca): simula antivírus/sincronização segurando o arquivo.
+	const FString Path = FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir() / TEXT("SaveGames") / (Scratch.Primary() + TEXT(".sav")));
+	TUniquePtr<IFileHandle> Lock(FPlatformFileManager::Get().GetPlatformFile().OpenWrite(*Path, /*bAppend*/ true, /*bAllowRead*/ false));
+	TArray<uint8> Probe;
+	if (!Lock || UGameplayStatics::LoadDataFromSlot(Probe, Scratch.Primary(), UserIndex))
+	{
+		AddInfo(TEXT("Travamento exclusivo indisponível neste ambiente; teste ignorado."));
+		return true;
+	}
+
+	AddExpectedError(TEXT("backups não usados"), EAutomationExpectedErrorFlags::Contains, 1);
+	TestEqual(TEXT("travado: falha em vez de devolver o backup velho"), LoadedYaw(Scratch), -1.f);
+
+	Lock.Reset();
+	TestEqual(TEXT("destravado: lê o save mais novo"), LoadedYaw(Scratch), 2.f);
+	return true;
+}
+#endif // PLATFORM_WINDOWS
 
 #undef CATALOG_TEST_FLAGS
 

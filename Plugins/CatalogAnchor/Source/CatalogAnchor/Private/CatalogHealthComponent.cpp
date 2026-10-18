@@ -27,7 +27,10 @@ void UCatalogHealthComponent::BeginPlay()
 	AActor* Owner = GetOwner();
 	if (Owner && Owner->HasAuthority())
 	{
-		Health = MaxHealth;
+		if (!bHealthPreset)
+		{
+			Health = MaxHealth;
+		}
 		Owner->OnTakeAnyDamage.AddDynamic(this, &UCatalogHealthComponent::HandleTakeAnyDamage);
 	}
 	else
@@ -78,9 +81,11 @@ float UCatalogHealthComponent::Heal(float Amount)
 	{
 		return 0.f;
 	}
-	const float OldHealth = Health;
-	SetHealthWithAuthority(ComputeNewHealth(Health, Amount, MaxHealth), nullptr);
-	return Health - OldHealth;
+	// Delta calculado antes de notificar: um ouvinte reentrante pode mudar Health e falsear o retorno.
+	const float NewHealth = ComputeNewHealth(Health, Amount, MaxHealth);
+	const float Healed = NewHealth - Health;
+	SetHealthWithAuthority(NewHealth, nullptr);
+	return Healed;
 }
 
 void UCatalogHealthComponent::SetHealth(float NewHealth)
@@ -90,8 +95,13 @@ void UCatalogHealthComponent::SetHealth(float NewHealth)
 	{
 		return;
 	}
-	// Via ComputeNewHealth: clamp e MaxHealth inválido (mantém a vida atual) com a mesma regra do dano.
-	SetHealthWithAuthority(ComputeNewHealth(Health, NewHealth - Health, MaxHealth), nullptr);
+	// Clamp direto (Current + (New - Current) perderia bits e o save não restauraria o valor exato);
+	// MaxHealth inválido mantém a vida atual, como no dano.
+	if (!FMath::IsFinite(MaxHealth) || MaxHealth <= 0.f)
+	{
+		return;
+	}
+	SetHealthWithAuthority(FMath::Clamp(NewHealth, 0.f, MaxHealth), nullptr);
 }
 
 void UCatalogHealthComponent::ResetHealth()
@@ -105,6 +115,7 @@ void UCatalogHealthComponent::ResetHealth()
 
 void UCatalogHealthComponent::SetHealthWithAuthority(float NewHealth, AActor* Causer)
 {
+	bHealthPreset |= !HasBegunPlay();
 	const float OldHealth = Health;
 	if (NewHealth == OldHealth)
 	{

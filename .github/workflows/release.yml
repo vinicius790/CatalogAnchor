@@ -30,6 +30,7 @@ jobs:
       - name: Conferir tag x VersionName
         run: |
           want="${GITHUB_REF_NAME#v}"
+          want="${want%%-*}"  # v1.2.3-rc1 -> 1.2.3 (VersionName é só X.Y.Z; o sufixo marca pre-release)
           have=$(python -c "import json;print(json.load(open('Plugins/CatalogAnchor/CatalogAnchor.uplugin'))['VersionName'])")
           [ "$want" = "$have" ] || { echo "::error::tag $GITHUB_REF_NAME != VersionName $have"; exit 1; }
 

@@ -1,0 +1,53 @@
+"""tools/mp_run.py: parsing dos logs do plugin, montagem do roteiro e predicados (sem rodar a engine)."""
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tools"))
+
+import mp_run  # noqa: E402
+
+PREFIX = "[2026.10.18-10.00.00:123][ 45]LogCatalogAnchor: Display: "
+PAWN = (
+    "[Dump] NetMode=Client Actor=Char_0 Health=100/100 "
+    "Dead=0 Items=13 Locally=1 Authority=0 Stacks=[Item_Gem x10 Item_Potion x3] "
+    "Loc=800,-340,88 Target=Chest_0 Focused=1 Holding=0 "
+    "Cd=[Catalog.Ability.Dash:0.85 Catalog.Ability.Melee:0.00] Snap=focus"
+)
+CHEST = "[Dump] NetMode=Client Interactable=Chest_0 Prompt=[Baú vazio] Blocked=1 Duration=1.5 Snap=hold_full"
+
+
+def test_parse_line_fields_and_brackets():
+    rec = mp_run.parse_line(PREFIX + PAWN)
+    assert rec["kind"] == "Dump" and rec["f"]["Stacks"] == "Item_Gem x10 Item_Potion x3"
+    assert rec["f"]["Target"] == "Chest_0" and mp_run.loc(rec) == (800.0, -340.0, 88.0)
+    assert mp_run.cd(rec, "Dash") == 0.85 and mp_run.cd(rec, "Nada") == -1.0
+    assert mp_run.parse_line(PREFIX + CHEST)["f"]["Prompt"] == "Baú vazio"
+
+
+def test_parse_debug_words_and_ignores_noise():
+    rec = mp_run.parse_line(PREFIX + "[Debug] Hold Begin NetMode=Client pawn=Char_0 alvo=Chest_0 resultado=1")
+    assert rec["words"] == ["Hold", "Begin"] and rec["f"]["resultado"] == "1"
+    assert mp_run.parse_line("LogNet: Warning: algo qualquer") is None
+    assert mp_run.parse_line(PREFIX + "[Dump] NetMode=Client Atores=4 SaveParticipants=0 Snap=")["f"]["Snap"] == ""
+
+
+def test_schedule_args_roles_and_absolute_time():
+    script = [(10, "D", "x"), (12, "S", "catalog.A"), (14, "C", "catalog.B 1")]
+    srv = mp_run.schedule_args(script, "S", 1000)
+    assert srv == "catalog.Debug.Schedule 1010.00 catalog.Debug.Dump x,catalog.Debug.Schedule 1012.00 catalog.A"
+    assert mp_run.schedule_args(script, "C", 1000).endswith("catalog.Debug.Schedule 1014.00 catalog.B 1")
+
+
+def test_focus_predicate_distinguishes_owner_and_other():
+    owner = mp_run.parse_log(PREFIX + PAWN)
+    other = mp_run.parse_log(
+        PREFIX + PAWN.replace("Locally=1", "Locally=0").replace("Target=Chest_0 Focused=1", "Target=None Focused=0")
+    )
+    srv = mp_run.parse_log(PREFIX + PAWN.replace("Locally=1", "Locally=0").replace("Focused=1", "Focused=0"))
+    results = mp_run.evaluate("03", {"srv": srv, "cli1": owner, "cli2": other}, {})
+    assert [ok for _, ok, _ in results] == [True, True, True]
+    leaked = mp_run.evaluate("03", {"srv": srv, "cli1": owner, "cli2": owner}, {})
+    assert not all(ok for _, ok, _ in leaked)

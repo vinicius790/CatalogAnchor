@@ -93,4 +93,7 @@ private:
 	 * ou seja, o servidor estava no default). Antes disso Health vale o default, não o do servidor.
 	 */
 	bool bReceivedFirstHealth = false;
+
+	/** Autoridade: a vida foi definida antes do BeginPlay (spawn adiado + restaurar save); o BeginPlay não a sobrescreve. */
+	bool bHealthPreset = false;
 };
