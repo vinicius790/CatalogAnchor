@@ -4,6 +4,7 @@
 #include "GameFramework/Actor.h"
 #include "GameFramework/Controller.h"
 #include "GameFramework/DamageType.h"
+#include "GameFramework/Pawn.h"
 #include "Net/UnrealNetwork.h"
 
 UCatalogHealthComponent::UCatalogHealthComponent()

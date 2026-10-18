@@ -9,9 +9,9 @@
 - Os 14 "Condition failed" no startup do editor vêm da engine 5.8.3 (provado num projeto vazio), não do plugin.
 - O CI público não tem engine; o workflow `ue.yml` (runner self-hosted) ainda não rodou num runner real.
 - **Multiplayer:** MP-03, 04, 06 e 07 rodam headless com `py -3 tools/mp_run.py --project <uproject> --case all` (dedicado + 2 clientes;
-  27/27 predicados, com a linha de log como evidência; detalhes em [docs/MULTIPLAYER_TESTS.md](docs/MULTIPLAYER_TESTS.md)). **Não verificado:** HUD e
-  barra de hold, F5/F9 por tecla, listen server nos casos 03/04/06 e abrir o baú trancado com a chave. Os testes de automação
-  usam um `UWorld` próprio, sem conexão de rede.
+  todos os predicados passam, incluindo listen server, teclas reais, HUD e baú trancado com chave; detalhes em [docs/MULTIPLAYER_TESTS.md](docs/MULTIPLAYER_TESTS.md)). **Não verificado:** mouse e
+  câmera reais, gamepad e a aparência visual do HUD (só o estado dos widgets é lido, com renderização offscreen). Os testes de
+  automação usam um `UWorld` próprio, sem conexão de rede.
 - **Foco/highlight real** só é verificável no PIE (precisa de `PlayerController` local com câmera): a automação
   cobre o trace (`ComputeTraceSegment`, `FindOwningController`), não o highlight na tela.
 - As assinaturas de API mais arriscadas foram conferidas lendo os headers da 5.8.3

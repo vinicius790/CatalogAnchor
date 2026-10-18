@@ -10,6 +10,7 @@
 #include "GameFramework/Actor.h"
 #include "GameFramework/DamageType.h"
 #include "GameFramework/WorldSettings.h"
+#include "GameFramework/Pawn.h"
 #include "Kismet/GameplayStatics.h"
 #include "Misc/AutomationTest.h"
 #include "UObject/Package.h"

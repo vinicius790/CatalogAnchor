@@ -2,6 +2,7 @@
 #include "Misc/AutomationTest.h"
 #include "CatalogInventoryComponent.h"
 #include "CatalogItemDefinition.h"
+#include "UObject/Package.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 

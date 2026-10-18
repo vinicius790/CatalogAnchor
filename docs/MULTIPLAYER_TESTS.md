@@ -5,10 +5,10 @@ Cada item tem passos, o resultado esperado (tirado do código atual) e um status
 Os testes automáticos (`CatalogAnchor.*`) cobrem a lógica sem rede; este roteiro cobre o que só
 aparece com servidor e clientes separados.
 
-> **Status geral (2026-10-18): 41 de 43 predicados PASS** em `py -3 tools/mp_run.py --project <uproject> --case all` (UE 5.8.3, Win64
-> Development Editor, `-nullrhi`; dedicado + 2 clientes para 03/04/06, standalone para 07/08/09). Os 2 FAIL são do caso 09 (HUD) e
-> estão explicados abaixo. **Listen server (`--mode listen`): implementado, NÃO executado** (interrompido por limite de tempo).
-> Sem input humano: mouse/câmera reais e a renderização do HUD.
+> **Status geral (2026-10-18): todos os predicados executados PASS** em `py -3 tools/mp_run.py --project <uproject> --case all`
+> (UE 5.8.3, Win64 Development Editor): dedicado + 2 clientes (03/04/06) e `--mode listen` (L03/L04/L06, 14/14), standalone com
+> renderização offscreen (07/08/09, onde o HUD UMG precisa renderizar; `-nullrhi` basta para os casos de rede). Sem input humano:
+> mouse/câmera reais, gamepad e a aparência visual do HUD (só o estado dos widgets é lido).
 
 ### Resultados reais por caso
 
@@ -21,8 +21,8 @@ aparece com servidor e clientes separados.
 | 08 teclas reais | standalone | PASS 9/9 | `catalog.Debug.Key` -> `APlayerController::InputKey(FInputKeyEventArgs::CreateSimulated)` -> Enhanced Input: E (hold, solto em 1 s não abre; 3 s abre), Q (+35 de vida, -1 poção), G (-1 item), LeftShift (Dash, `Cd` > 0), F5 (`CatalogSave: slot 'Quick' gravado`), F9 (estado volta ao salvo), LeftMouseButton (Melee 75 -> 50) |
 | 09 menu Tab e input mode | standalone | PASS 3/3 | Tab: `MenuOpen=1 IgnoreInput=1 Cursor=1`; segundo Tab: tudo `0` |
 | 09 progresso do hold (componente) | standalone | PASS | `GetInteractionProgress` 0,27 -> 0,60 e 0,40 -> 0,80 durante os holds; 0 e `Holding=0` ao soltar/abrir |
-| 09 textos/barra do `USampleHUDWidget` | standalone | **bloqueado** (FAIL) | com `-nullrhi` o widget existe (`Widget=1 InViewport=1 Slate=1 Window=2`) mas `NativeTick` não roda: vida/prompt/inventário ficam vazios e `Bar=0` com o pawn em 60/100 (só `ShowMessage`, que é evento, aparece: `Message=[Load Quick: ok]`). `Slate.AllowSlateToSleep 0` não resolveu; causa não identificada. Para verificar: rodar com RHI real |
-| 03/04/06 | **listen server** (`--mode listen`) | **não executado** | script `LISTEN` e predicados `L03/L04/L06` prontos em `tools/mp_run.py`; sem resultado real |
+| 09 textos/barra do `USampleHUDWidget` | standalone (offscreen) | PASS | com `-RenderOffscreen` o `NativeTick` roda: `Vida 60/100`, prompt `(E) Abrir baú`, barra visível e crescente durante cada hold (0,26 -> 0,59 e 0,40 -> 0,80), inventário atualiza após `GiveItem` (com `-nullrhi` os textos ficam vazios: limite do modo, não do jogo) |
+| 03/04/06 | **listen server** (`--mode listen`) | PASS 14/14 | host anuncia foco só ao próprio pawn; cliente abre o baú (inclusive o trancado, com chave) por Server RPC; Dash/cooldown OwnerOnly; Melee do cliente tira 25 do boneco, igual no host e no cliente (o boneco é comparado por posição: o nome replicado troca entre máquinas) |
 
 Comandos novos (não-Shipping): `catalog.Debug.Key <Tecla> [Press|Release|Tap] [s]` (`CatalogDebugCommands.cpp`; `CatalogAnchor.Build.cs` ganhou
 `InputCore` e `ApplicationCore` fora de Shipping) e `sample.Debug.Hud [rótulo]` (`SampleDebugCommands.cpp`: estado do HUD UMG e do menu de saves lido

@@ -4,6 +4,7 @@
 #include "CatalogGameplayTags.h"
 #include "GameplayTagContainer.h"
 #include "Misc/AutomationTest.h"
+#include "UObject/Package.h"
 #include <limits>
 
 #if WITH_DEV_AUTOMATION_TESTS

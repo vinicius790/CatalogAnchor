@@ -7,14 +7,18 @@
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
 #include "GameFramework/Controller.h"
+#include "GameFramework/Pawn.h"
 
 namespace CatalogBlueprintLibraryPrivate
 {
 	// Vida e inventário moram no pawn; quem tem o controller (HUD, GameMode) pergunta por ele.
 	const AActor* ResolveOwner(const AActor* Actor)
 	{
-		const AController* Controller = Cast<AController>(Actor);
-		return Controller ? Controller->GetPawn() : Actor;
+		if (const AController* Controller = Cast<AController>(Actor))
+		{
+			return Controller->GetPawn<AActor>(); // GetPawn() devolve TObjectPtr<APawn>, que não converte para const AActor* no alvo Game
+		}
+		return Actor;
 	}
 }
 

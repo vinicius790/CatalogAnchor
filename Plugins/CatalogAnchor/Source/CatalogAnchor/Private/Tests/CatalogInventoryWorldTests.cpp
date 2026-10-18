@@ -9,6 +9,7 @@
 #include "Engine/World.h"
 #include "GameFramework/DefaultPawn.h"
 #include "GameFramework/PlayerController.h"
+#include "UObject/Package.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 

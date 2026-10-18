@@ -175,6 +175,13 @@ def find(recs: list[Rec], label: str, key: str, name: str) -> Rec | None:
     return next((r for r in snap(recs, label) if name in r["f"].get(key, "\0")), None)
 
 
+def at_loc(recs: list[Rec], label: str, ref: Rec | None) -> Rec | None:
+    """Mesmo ator de `ref` em outra máquina: o nome replicado troca entre host e cliente, a posição não."""
+    if not ref:
+        return None
+    return next((r for r in snap(recs, label) if "Dummy" in r["f"].get("Actor", "") and loc(r) == loc(ref)), None)
+
+
 def loc(r: Rec) -> tuple[float, ...]:
     return tuple(float(v) for v in r["f"]["Loc"].split(","))
 
@@ -562,13 +569,15 @@ def hud_text_checks(h: dict[str, Rec | None]) -> list[tuple[str, bool, str]]:
             h["hold1"] and h["hold1"]["raw"],
         )
     )
-    bars = [num(h[n], "Bar") for n in ("hold2", "hold3", "hold4")]
+    names = ("hold1", "hold2", "hold3", "hold4")  # hold1/hold2 = 1º hold (solto antes do fim); hold3/hold4 = 2º hold
+    bars = [num(h[n], "Bar") for n in names]
     out.append(
         check(
-            "09 barra de hold durante o hold: visível, 0 < progresso < 1 e crescente",
-            all(num(h[n], "BarVisible") == 1 for n in ("hold2", "hold3", "hold4"))
+            "09 barra de hold durante o hold: visível, 0 < progresso < 1 e crescente dentro de cada hold",
+            all(num(h[n], "BarVisible") == 1 for n in names)
             and all(0 < b < 1 for b in bars)
-            and bars == sorted(bars),
+            and bars[0] < bars[1]
+            and bars[2] < bars[3],
             h["hold4"] and h["hold4"]["raw"],
         )
     )
@@ -698,8 +707,12 @@ def evaluate_listen(logs: dict[str, list[Rec]], raw: dict[str, str]) -> list[tup
     ]
     out.append(check("L06 host: Dash moveu os 2 pawns > 100 cm", len(moved) == 2, moved and moved[0]["raw"]))
     dummy = aimed(host, "Dummy")
+    ref = find(host, "melee_before", "Actor", dummy)
     for key, recs in (("host", host), ("cliente", cli)):
-        b, a = find(recs, "melee_before", "Actor", dummy), find(recs, "melee_after", "Actor", dummy)
+        if key == "host":
+            b, a = ref, find(recs, "melee_after", "Actor", dummy)
+        else:  # por posição: o nome do ator replicado não é o mesmo no cliente
+            b, a = at_loc(recs, "melee_before", ref), at_loc(recs, "melee_after", ref)
         out.append(
             check(
                 f"L06 {key}: boneco {dummy} vida 75 -> 50 (Melee do cliente via Server RPC)",
@@ -722,7 +735,9 @@ def schedule_args(script: list[tuple[float, str, str]], role: str, t0: float) ->
     return ",".join(cmds)
 
 
-def launch(cmd: Path, project: Path, url: str, mode: list[str], log: Path, execcmds: str) -> subprocess.Popen:
+def launch(
+    cmd: Path, project: Path, url: str, mode: list[str], log: Path, execcmds: str, offscreen: bool = False
+) -> subprocess.Popen:
     argv = [
         str(cmd),
         str(project),
@@ -730,7 +745,8 @@ def launch(cmd: Path, project: Path, url: str, mode: list[str], log: Path, execc
         *mode,
         "-log",
         f"-abslog={log}",
-        "-nullrhi",
+        # Offscreen renderiza de verdade (o NativeTick dos widgets UMG só roda assim); -nullrhi basta para a rede.
+        *(["-RenderOffscreen", "-ResX=640", "-ResY=360", "-windowed"] if offscreen else ["-nullrhi"]),
         "-unattended",
         "-nosplash",
         "-NoSound",
@@ -804,7 +820,10 @@ def run_session(
             # Um processo só: o roteiro é relativo ao -ExecCmds (roda depois de carregar o mapa); o boot da engine varia
             # com a carga da máquina e um T0 absoluto fixo perdia os primeiros comandos.
             procs.append(
-                launch(cmd, args.project, "/Engine/Maps/Entry", ["-game"], logs["srv"], schedule_args(script, "S", 5.0))
+                launch(
+                    cmd, args.project, "/Engine/Maps/Entry", ["-game"], logs["srv"],
+                    schedule_args(script, "S", 5.0), True,
+                )
             )
             last = next(c for _, w, c in reversed(script) if w == "D")
             while f"Snap={last}" not in (logs["srv"].read_text("utf-8", "replace") if logs["srv"].exists() else ""):
