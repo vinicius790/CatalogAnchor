@@ -44,7 +44,7 @@ Roda `RunUAT BuildPlugin` e compila Runtime + Editor num projeto temporário; a 
 py -3 tools/ue.py test
 ```
 
-Compila o `SampleCatalogEditor` e roda os 64 testes de automação `CatalogAnchor.*` no editor headless
+Compila o `SampleCatalogEditor` e roda os 67 testes de automação `CatalogAnchor.*` no editor headless
 (`-nullrhi`). Logs e relatório (`index.json`) vão para `--report-dir` (default `Saved/Reports`); sai ≠ 0 se
 algum teste falhar ou se nenhum teste rodar.
 
@@ -58,7 +58,7 @@ Compile a partir de um caminho ASCII.
 
 - [ ] Output Log: `LogCatalogAnchor: CatalogAnchor Runtime online`
 - [ ] Project Settings → Plugins → **Catalog Anchor** mostra Interaction / Save / Inventory / Ability
-- [ ] Session Frontend → Automation → `CatalogAnchor` → 64 testes verdes (com o PIE parado)
+- [ ] Session Frontend → Automation → `CatalogAnchor` → 67 testes verdes (com o PIE parado)
 - [ ] Sample: pegar pickups, abrir o baú segurando E, pegar a chave e abrir o baú trancado
 - [ ] Sample: F5 → fechar o PIE → Play → F9 restaura inventário, posição e vida
 - [ ] Sample: Tab abre o menu de saves (salvar/carregar/apagar com metadados)

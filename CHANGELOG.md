@@ -7,6 +7,7 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) · versões
 ## [0.5.0] — 2026-10-13
 
 ### Adicionado
+- Vida: o 1º valor replicado não gera delta falso; testes das `_Validate` (habilidade, interação, inventário) e `catalog.Debug.Dump`/comandos de depuração. 67 testes de automação passando.
 - **Verificação real (Windows, UE 5.8.3, MSVC 14.44, Windows SDK 22621):** build do `SampleCatalogEditor` OK e
   **64/64 testes de automação** passando no `UnrealEditor-Cmd`; pytest com 118 casos (Python 3.13 e 3.14).
 - **Inventário:** `UseItem` / `ServerUseItem` (RPC validado) e `OnItemUsed`; `UCatalogItemDefinition::bUsable`,

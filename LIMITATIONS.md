@@ -3,7 +3,7 @@
 ## Estado real da verificação
 
 - **Compilado e testado (Windows, UE 5.8.3, MSVC 14.44.35229, Windows SDK 22621):** `SampleCatalogEditor`
-  (plugin Runtime + Editor + sample) compila sem erros e os **64 testes de automação** passam no
+  (plugin Runtime + Editor + sample) compila sem erros e os **67 testes de automação** passam no
   `UnrealEditor-Cmd`. A toolchain veio de `tools/get_msvc.py` (pacotes oficiais, sem Visual Studio) via
   `UE_SDKS_ROOT`; o repo foi compilado a partir de um caminho ASCII. pytest: 118 casos (Python 3.13 e 3.14).
 - Os 14 "Condition failed" no startup do editor vêm da engine 5.8.3 (provado num projeto vazio), não do plugin.
