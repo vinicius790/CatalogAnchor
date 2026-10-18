@@ -462,4 +462,36 @@ bool FCatalogAbilityMeleeDestroyedTargetTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCatalogHealthFirstChangeAtDefaultTest, "CatalogAnchor.Health.ClientFirstChangeKeepsRealDelta",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::CommandletContext | EAutomationTestFlags::ProductFilter)
+
+bool FCatalogHealthFirstChangeAtDefaultTest::RunTest(const FString& Parameters)
+{
+	using namespace CatalogHealthWorldTestsImpl;
+	if (CatalogTestGuards::ShouldSkipDuringPIE(*this))
+	{
+		return true;
+	}
+	if (!TestNotNull(TEXT("GEngine"), GEngine))
+	{
+		return false;
+	}
+	FScopedTestWorld TestWorld;
+
+	// Cliente: servidor iniciou em 100 (= default), nada replicou antes do BeginPlay; a 1ª mudança é dano real.
+	AActor* Actor = TestWorld.World->SpawnActor<AActor>();
+	Actor->SetRole(ROLE_SimulatedProxy);
+	UCatalogHealthTestListener* L = NewObject<UCatalogHealthTestListener>(GetTransientPackage());
+	UCatalogHealthTestComponent* Client = NewObject<UCatalogHealthTestComponent>(Actor);
+	Client->MaxHealth = 100.f;
+	Client->OnHealthChanged.AddDynamic(L, &UCatalogHealthTestListener::HandleHealthChanged);
+	Client->RegisterComponent(); // BeginPlay sem autoridade
+	TestEqual(TEXT("BeginPlay do cliente não mexe na vida"), Client->GetHealth(), 100.f);
+
+	Client->SimulateReplication(70.f);
+	TestEqual(TEXT("1a mudança: um OnHealthChanged"), L->ChangedCount, 1);
+	TestEqual(TEXT("1a mudança: delta real -30"), L->LastDelta, -30.f);
+	return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS

@@ -88,6 +88,9 @@ private:
 
 	void BroadcastChange(float OldHealth, AActor* Causer);
 
-	/** Cliente: já recebeu o 1º valor replicado (antes dele, Health vale o default, não o do servidor). */
+	/**
+	 * Cliente: a base de Health é confiável (recebeu o 1º valor replicado, ou o BeginPlay passou sem ele,
+	 * ou seja, o servidor estava no default). Antes disso Health vale o default, não o do servidor.
+	 */
 	bool bReceivedFirstHealth = false;
 };

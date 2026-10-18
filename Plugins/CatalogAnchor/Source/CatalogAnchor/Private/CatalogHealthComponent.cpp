@@ -30,6 +30,12 @@ void UCatalogHealthComponent::BeginPlay()
 		Health = MaxHealth;
 		Owner->OnTakeAnyDamage.AddDynamic(this, &UCatalogHealthComponent::HandleTakeAnyDamage);
 	}
+	else
+	{
+		// O estado inicial replicado chega (e dispara OnRep) antes do BeginPlay do cliente. Se não chegou,
+		// o servidor estava no default: o valor local já é a base certa e o 1º OnRep traz delta real.
+		bReceivedFirstHealth = true;
+	}
 }
 
 void UCatalogHealthComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)

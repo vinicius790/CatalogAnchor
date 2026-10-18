@@ -47,6 +47,18 @@ public:
 	}
 };
 
+/** Só para teste: expõe os _Validate protegidos dos Server RPCs. */
+UCLASS(Transient, HideDropdown)
+class UCatalogInteractionTestComponent : public UCatalogInteractionComponent
+{
+	GENERATED_BODY()
+
+public:
+	bool ValidateTry() { return ServerTryInteract_Validate(); }
+	bool ValidateBegin() { return ServerBeginInteract_Validate(); }
+	bool ValidateEnd() { return ServerEndInteract_Validate(); }
+};
+
 /** Só para teste: delegates dinâmicos exigem UFUNCTION num UObject. Registra falhas e conclusões. */
 UCLASS(Transient)
 class UCatalogInteractionTestListener : public UObject

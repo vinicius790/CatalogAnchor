@@ -1,4 +1,5 @@
 ﻿// Copyright 2026 Geraliza Castlevania. MIT License.
+#include "CatalogAbilityTestComponent.h"
 #include "CatalogAbilityComponent.h"
 #include "CatalogGameplayTags.h"
 #include "GameplayTagContainer.h"
@@ -51,6 +52,18 @@ bool FCatalogAbilityNativeTagsTest::RunTest(const FString& Parameters)
 			FGameplayTag::RequestGameplayTag(FName(TEXT("Catalog.Ability.Melee")), /*ErrorIfNotFound*/ false) == Melee);
 	}
 	TestTrue(TEXT("Tags distintas"), Dash != Melee);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCatalogAbilityValidateTest, "CatalogAnchor.Abilities.ServerRpcValidate",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::CommandletContext | EAutomationTestFlags::ProductFilter)
+
+bool FCatalogAbilityValidateTest::RunTest(const FString& Parameters)
+{
+	// Sem dono nem mundo: _Validate só olha o argumento.
+	UCatalogAbilityTestComponent* Component = NewObject<UCatalogAbilityTestComponent>(GetTransientPackage());
+	TestTrue(TEXT("tag válida passa"), Component->ValidateActivate(CatalogGameplayTags::Ability_Dash));
+	TestFalse(TEXT("tag vazia é recusada (desconecta o cliente)"), Component->ValidateActivate(FGameplayTag()));
 	return true;
 }
 

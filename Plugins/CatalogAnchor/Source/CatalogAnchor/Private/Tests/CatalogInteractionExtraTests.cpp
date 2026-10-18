@@ -41,6 +41,22 @@ namespace CatalogInteractionExtraTestsPrivate
 		return Interaction;
 	}
 
+	/** Oclusor não interativo (caixa que bloqueia tudo). */
+	static AActor* SpawnBlocker(UWorld* World, const FVector& Location, const FVector& Extent)
+	{
+		AActor* Blocker = World->SpawnActor<AActor>(FVector::ZeroVector, FRotator::ZeroRotator);
+		if (Blocker)
+		{
+			UBoxComponent* Box = NewObject<UBoxComponent>(Blocker, TEXT("BlockerBox"));
+			Box->InitBoxExtent(Extent);
+			Box->SetCollisionProfileName(UCollisionProfile::BlockAll_ProfileName);
+			Blocker->SetRootComponent(Box);
+			Box->RegisterComponent();
+			Blocker->SetActorLocation(Location);
+		}
+		return Blocker;
+	}
+
 	static bool OpenWorld(FAutomationTestBase& Test, FTestWorldWrapper& WorldWrapper)
 	{
 		if (!WorldWrapper.CreateTestWorld(EWorldType::Game) || !WorldWrapper.BeginPlayInTestWorld())
@@ -97,6 +113,12 @@ bool FCatalogInteractionDefaultsTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Canal padrao = Visibility"), Component->TraceChannel == ECC_Visibility);
 	TestFalse(TEXT("Assist desligado"), Component->bUseSphereAssist);
 	TestTrue(TEXT("Raio do assist positivo"), Component->AssistRadius > 0.f);
+
+	// Os Server RPCs não carregam parâmetros do cliente: _Validate nunca derruba a conexão.
+	UCatalogInteractionTestComponent* Test = NewObject<UCatalogInteractionTestComponent>(GetTransientPackage());
+	TestTrue(TEXT("ServerTryInteract_Validate"), Test->ValidateTry());
+	TestTrue(TEXT("ServerBeginInteract_Validate"), Test->ValidateBegin());
+	TestTrue(TEXT("ServerEndInteract_Validate"), Test->ValidateEnd());
 	return true;
 }
 
@@ -154,16 +176,25 @@ bool FCatalogInteractionSphereAssistTest::RunTest(const FString& Parameters)
 		Direct->Destroy();
 	}
 
-	// Oclusor não interativo à frente esconde os candidatos atrás dele.
-	AActor* Wall = World->SpawnActor<AActor>(FVector::ZeroVector, FRotator::ZeroRotator);
-	if (TestNotNull(TEXT("Parede criada"), Wall))
+	// Oclusor lateral que o sweep acerta mas que não corta a linha de visada não esconde ninguém.
+	AActor* Pillar = SpawnBlocker(World, FVector(100.0, 60.0, 0.0), FVector(20.0));
+	if (TestNotNull(TEXT("Pilar criado"), Pillar))
 	{
-		UBoxComponent* WallBox = NewObject<UBoxComponent>(Wall, TEXT("WallBox"));
-		WallBox->InitBoxExtent(FVector(10.0, 300.0, 300.0));
-		WallBox->SetCollisionProfileName(UCollisionProfile::BlockAll_ProfileName);
-		Wall->SetRootComponent(WallBox);
-		WallBox->RegisterComponent();
-		Wall->SetActorLocation(FVector(100.0, 0.0, 0.0));
+		TestTrue(TEXT("Pilar lateral nao esconde (prioridade vence)"), Interaction->RefreshTarget() == High);
+		Pillar->Destroy();
+	}
+
+	// Oclusor fino na linha de visada de High: descartado mesmo com prioridade maior; Near segue visível.
+	AActor* Blade = SpawnBlocker(World, FVector(100.0, 25.0, 0.0), FVector(5.0, 10.0, 50.0));
+	if (TestNotNull(TEXT("Lamina criada"), Blade))
+	{
+		TestTrue(TEXT("Candidato sem visada e descartado"), Interaction->RefreshTarget() == Near);
+		Blade->Destroy();
+	}
+
+	// Parede inteira à frente esconde todos os candidatos atrás dela.
+	if (TestNotNull(TEXT("Parede criada"), SpawnBlocker(World, FVector(100.0, 0.0, 0.0), FVector(10.0, 300.0, 300.0))))
+	{
 		TestNull(TEXT("Parede esconde os candidatos"), Interaction->RefreshTarget());
 	}
 	return true;

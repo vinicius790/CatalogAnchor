@@ -22,8 +22,11 @@ static TAutoConsoleVariable<int32> CVarCatalogInteractionDebug(TEXT("catalog.Int
 // Nomeado (não anônimo): em unity build vários .cpp dividem a mesma unidade de tradução.
 namespace CatalogInteractionPrivate
 {
-	/** Teto de interagíveis avaliados pelo assist (1 sweep cada): limita o custo por trace. */
+	/** Teto de interagíveis avaliados pelo assist: limita o custo por trace. */
 	static constexpr int32 MaxAssistCandidates = 8;
+
+	/** Teto de sweeps do assist (candidatos + oclusores ignorados). */
+	static constexpr int32 MaxAssistSweeps = 16;
 
 	/** Sonda de OutOfRange: múltiplo do alcance. shortcut: fixo; vira UPROPERTY se algum jogo precisar. */
 	static constexpr float OutOfRangeProbeFactor = 3.f;
@@ -248,25 +251,39 @@ AActor* UCatalogInteractionComponent::FindAssistTarget(const FVector& Start, con
 	TArray<FCatalogInteractionCandidate, TInlineAllocator<CatalogInteractionPrivate::MaxAssistCandidates>> Candidates;
 	TArray<AActor*, TInlineAllocator<CatalogInteractionPrivate::MaxAssistCandidates>> Actors;
 
-	// Um sweep por candidato, ignorando os já achados: sweep múltiplo pararia no 1º bloqueio.
-	// shortcut: termina no 1º oclusor não interativo, então um objeto lateral mais perto da câmera
-	// esconde alvos atrás dele; troque por overlap + linha de visada se isso incomodar.
+	// Um sweep por ator, ignorando os já vistos: sweep múltiplo pararia no 1º bloqueio. Oclusores não
+	// interativos também são ignorados no sweep; quem vale é a linha de visada abaixo.
+	const UWorld* World = GetWorld();
+	const FCollisionQueryParams BaseParams = Params;
 	FHitResult Hit;
-	while (Actors.Num() < CatalogInteractionPrivate::MaxAssistCandidates
-		&& TraceSegment(Start, End, Params, AssistRadius, Hit))
+	for (int32 Sweep = 0; Sweep < CatalogInteractionPrivate::MaxAssistSweeps
+		&& Actors.Num() < CatalogInteractionPrivate::MaxAssistCandidates
+		&& TraceSegment(Start, End, Params, AssistRadius, Hit); ++Sweep)
 	{
 		AActor* HitActor = Hit.GetActor();
-		if (!CatalogInteractionPrivate::IsInteractable(HitActor))
+		if (!HitActor)
 		{
 			break;
+		}
+		Params.AddIgnoredActor(HitActor);
+		if (!CatalogInteractionPrivate::IsInteractable(HitActor))
+		{
+			continue;
 		}
 		// Centro visual do alvo (bounds colidíveis); pivô nos pés não deve decidir a mira.
 		const FBox Bounds = HitActor->GetComponentsBoundingBox();
 		const FVector Center = Bounds.IsValid ? Bounds.GetCenter() : HitActor->GetActorLocation();
+
+		// Só vale com linha de visada livre até o centro (ignorando o próprio candidato): senão está atrás de algo.
+		FCollisionQueryParams SightParams = BaseParams;
+		SightParams.AddIgnoredActor(HitActor);
+		if (World->LineTraceTestByChannel(Start, Center, TraceChannel, SightParams))
+		{
+			continue;
+		}
 		Candidates.Add({ ICatalogInteractable::Execute_GetInteractionPriority(HitActor),
 			static_cast<float>(FMath::PointDistToSegment(Center, Start, End)) });
 		Actors.Add(HitActor);
-		Params.AddIgnoredActor(HitActor);
 	}
 
 	const int32 Best = SelectBestCandidate(Candidates);
