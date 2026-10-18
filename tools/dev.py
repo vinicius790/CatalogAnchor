@@ -40,6 +40,8 @@ def package() -> Path:
 
 
 def main(argv: list[str] | None = None) -> int:
+    for stream in (sys.stdout, sys.stderr):  # consoles cp1252 não imprimem os acentos do --help
+        stream.reconfigure(errors="backslashreplace")
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("command", choices=["test", "build", "package"])
     args = parser.parse_args(argv)

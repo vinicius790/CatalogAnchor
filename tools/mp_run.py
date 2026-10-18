@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
-r"""Driver dos testes multiplayer headless (docs/MULTIPLAYER_TESTS.md: MP-03, MP-04, MP-06, MP-07).
+r"""Driver dos testes multiplayer headless (docs/MULTIPLAYER_TESTS.md: MP-03, MP-04, MP-06, MP-07 e teclas/HUD 08/09).
 
-Sobe servidor dedicado + 2 clientes (03/04/06) ou um jogo standalone (07), cada processo com um roteiro de
+Sobe servidor dedicado + 2 clientes (03/04/06; `--mode listen`: host com jogador local + 1 cliente) ou um standalone
+(07 = save/load por comando; 08/09 = teclas reais (Enhanced Input) e estado do HUD UMG), cada processo com um roteiro de
 `catalog.Debug.Schedule <s> <cmd>` em -ExecCmds, espera, mata só os processos que ele criou, lê os logs
 (`[Dump] ... Snap=<rótulo>` e `[Debug] ...`) e imprime PASS/FAIL por predicado com a linha de log como evidência.
 
-  py -3 tools/mp_run.py --project SampleProject/SampleCatalog.uproject --case all [--engine <raiz>] [--out <pasta>]
+  py -3 tools/mp_run.py --project SampleProject/SampleCatalog.uproject --case all [--mode dedicated|listen]
 
 Engine: --engine > env UE_ROOT > descoberta do tools/ue.py. Saída ≠ 0 se algum predicado falhar.
-Comandos de console usados só existem fora de Shipping (CatalogDebugCommands.cpp).
+Comandos de console usados só existem fora de Shipping (CatalogDebugCommands.cpp, SampleDebugCommands.cpp).
 """
 
 from __future__ import annotations
@@ -51,6 +52,12 @@ DEDICATED: list[tuple[float, str, str]] = [
     (48, "D", "melee_before"),
     (49, "C", "catalog.Debug.Ability Melee"),
     (52, "D", "melee_after"),
+    (54, "S", "catalog.Debug.GiveItem Key 1"),
+    (55, "S", "catalog.Debug.Aim ChestActor_1 0"),
+    (61, "D", "key_ready"),
+    (62, "C", "catalog.Debug.Hold Begin"),
+    (65, "C", "catalog.Debug.Hold End"),
+    (68, "D", "key_open"),
 ]
 STANDALONE: list[tuple[float, str, str]] = [
     (0, "S", "catalog.Debug.GiveItem Gem 5"),
@@ -64,6 +71,75 @@ STANDALONE: list[tuple[float, str, str]] = [
     (12, "D", "changed"),
     (13, "S", "catalog.Save.Load MPT"),
     (19, "D", "loaded"),
+]
+# Teclas reais (caso 08) + HUD (caso 09), standalone: catalog.Debug.Key passa pelo PlayerController/Enhanced Input.
+KEYS: list[tuple[float, str, str]] = [
+    (0, "S", "catalog.Debug.Hurt 40"),
+    (0.5, "S", "catalog.Debug.Aim ChestActor_0 0"),
+    (4, "D", "k_base"),
+    (4.1, "S", "sample.Debug.Hud k_base"),
+    (5, "S", "catalog.Debug.Key E Press"),
+    (5.4, "S", "sample.Debug.Hud k_hold1"),
+    (5.9, "S", "sample.Debug.Hud k_hold2"),
+    (6, "S", "catalog.Debug.Key E Release"),
+    (6.6, "S", "sample.Debug.Hud k_early_rel"),
+    (7, "D", "k_early"),
+    (8, "S", "catalog.Debug.Key E Press"),
+    (8.6, "S", "sample.Debug.Hud k_hold3"),
+    (9.2, "S", "sample.Debug.Hud k_hold4"),
+    (11, "S", "sample.Debug.Hud k_full_held"),
+    (11.1, "D", "k_full"),
+    (11.5, "S", "catalog.Debug.Key E Release"),
+    (12.5, "S", "sample.Debug.Hud k_full_rel"),
+    (13, "S", "catalog.Debug.Key Q Tap"),
+    (15, "D", "k_potion"),
+    (15.1, "S", "sample.Debug.Hud k_potion"),
+    (16, "S", "catalog.Debug.Key G Tap"),
+    (18, "D", "k_drop"),
+    (19, "S", "catalog.Debug.Key LeftShift Tap"),
+    (19.5, "D", "k_dash"),
+    (22, "S", "catalog.Debug.Key F5 Tap"),
+    (23.5, "D", "k_saved"),
+    (24, "S", "catalog.Debug.GiveItem Gem 3"),
+    (24.2, "S", "catalog.Debug.Hurt 20"),
+    (25.5, "D", "k_changed"),
+    (26, "S", "catalog.Debug.Key F9 Tap"),
+    (28, "D", "k_loaded"),
+    (29, "S", "catalog.Debug.Key Tab Tap"),
+    (30, "S", "sample.Debug.Hud k_menu"),
+    (31, "S", "catalog.Debug.Key Tab Tap"),
+    (32, "S", "sample.Debug.Hud k_menu_closed"),
+    (33, "S", "catalog.Debug.Aim Dummy 0"),
+    (37, "D", "k_melee_before"),
+    (38, "S", "catalog.Debug.Key LeftMouseButton Tap"),
+    (40, "D", "k_melee_after"),
+]
+# Listen server: S = comandos de servidor no host (Aim/GiveItem, jogador 0 = host, 1 = cliente), H = pawn local do host.
+LISTEN: list[tuple[float, str, str]] = [
+    (0, "D", "base"),
+    (1, "H", "catalog.Debug.Ability Dash"),
+    (1, "C", "catalog.Debug.Ability Dash"),
+    (1.3, "H", "catalog.Debug.Ability Dash"),
+    (1.3, "C", "catalog.Debug.Ability Dash"),
+    (2, "D", "dash"),
+    (6, "S", "catalog.Debug.Aim ChestActor_0 0"),
+    (6.2, "S", "catalog.Debug.Aim ChestActor_1 1"),
+    (13, "D", "focus"),
+    (14, "H", "catalog.Debug.Hold Begin"),
+    (14, "C", "catalog.Debug.Hold Begin"),
+    (15, "H", "catalog.Debug.Hold End"),
+    (15, "C", "catalog.Debug.Hold End"),
+    (18, "D", "hold_early"),
+    (19, "S", "catalog.Debug.GiveItem Key 1 1"),
+    (21, "H", "catalog.Debug.Hold Begin"),
+    (21, "C", "catalog.Debug.Hold Begin"),
+    (25, "H", "catalog.Debug.Hold End"),
+    (25, "C", "catalog.Debug.Hold End"),
+    (28, "D", "hold_full"),
+    (30, "S", "catalog.Debug.Aim Dummy 1"),
+    (36, "D", "melee_before"),
+    (37, "C", "catalog.Debug.Ability Melee"),
+    (40, "D", "melee_after"),
 ]
 
 
@@ -112,6 +188,31 @@ def aimed(recs: list[Rec], needle: str) -> str:
     """Nome do ator-alvo do último `[Debug] Aim ... alvo=<nome>` cujo alvo contém `needle`."""
     names = [r["f"]["alvo"] for r in recs if r["words"][:1] == ["Aim"] and needle in r["f"].get("alvo", "")]
     return names[-1] if names else "\0"
+
+
+def g(r: Rec | None, key: str) -> str | None:
+    return r["f"].get(key) if r else None
+
+
+def num(r: Rec | None, key: str, default: float = -1.0) -> float:
+    try:
+        return float(g(r, key))  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return default
+
+
+def hp(r: Rec | None) -> float:
+    """Vida atual do campo Health=`atual/máx` do Dump (-1 se ausente)."""
+    return num({"f": {"h": (g(r, "Health") or "").split("/")[0]}}, "h")
+
+
+def local(recs: list[Rec], label: str) -> Rec | None:
+    return next((r for r in pawns(recs, label) if r["f"]["Locally"] == "1"), None)
+
+
+def hud(recs: list[Rec], label: str) -> Rec | None:
+    """`[Debug] Hud ... Snap=<rótulo>` (sample.Debug.Hud)."""
+    return next((r for r in recs if r["words"][:1] == ["Hud"] and r["f"].get("Snap") == label), None)
 
 
 def check(name: str, ok: bool, evidence: str | None) -> tuple[str, bool, str]:
@@ -211,6 +312,26 @@ def evaluate(case: str, logs: dict[str, list[Rec]], raw: dict[str, str]) -> list
                 begins and begins[0]["raw"],
             )
         )
+        ready = find(srv, "key_ready", "Interactable", "ChestActor_1")
+        out.append(
+            check(
+                "04 baú trancado com Item_Key no inventário: prompt vira Abrir e Blocked=0",
+                bool(ready) and "Abrir" in ready["f"]["Prompt"] and ready["f"]["Blocked"] == "0",
+                ready and ready["raw"],
+            )
+        )
+        opened = find(srv, "key_open", "Interactable", "ChestActor_1")
+        owner = [r for r in pawns(srv, "key_open") if r["f"]["Items"] != "0"]
+        out.append(
+            check(
+                "04 hold no baú trancado com a chave: abre ('vazio'), dono com 39 itens (13+1+25; chave não consumida)",
+                bool(opened)
+                and "vazio" in opened["f"]["Prompt"]
+                and len(owner) == 1
+                and owner[0]["f"]["Items"] == "39",
+                owner[0]["raw"] if owner else (opened and opened["raw"]),
+            )
+        )
     elif case == "06":
         for i, c in enumerate(clis, 1):
             mine = [r for r in pawns(c, "dash") if r["f"]["Locally"] == "1"]
@@ -264,16 +385,338 @@ def evaluate(case: str, logs: dict[str, list[Rec]], raw: dict[str, str]) -> list
                     f"07 após Save.Load: {key} volta ao salvo ({s['f'][key]})", ld["f"][key] == s["f"][key], ld["raw"]
                 )
             )
+    elif case in ("08", "09"):
+        out += evaluate_keys(case, srv, raw["srv"])
+    return out
+
+
+def evaluate_keys(case: str, srv: list[Rec], raw: str) -> list[tuple[str, bool, str]]:
+    """Casos 08 (teclas -> efeitos no jogo) e 09 (HUD UMG e menu), standalone com `catalog.Debug.Key`."""
+    out: list[tuple[str, bool, str]] = []
+    names = ("base", "early", "full", "potion", "drop", "dash", "saved", "changed", "loaded")
+    p = {n: local(srv, f"k_{n}") for n in names}
+    ch = {n: find(srv, f"k_{n}", "Interactable", "ChestActor_0") for n in ("early", "full")}
+    if case == "08":
+        held = hud(srv, "k_hold1")
+        out.append(
+            check(
+                "08 tecla E (Press): Enhanced Input inicia o hold (Holding=1 no pawn local)",
+                num(held, "CompHolding") == 1,
+                held and held["raw"],
+            )
+        )
+        out.append(
+            check(
+                "08 E solto antes de 1,5 s: baú segue 'Abrir baú' (Blocked=0) e inventário vazio",
+                bool(ch["early"] and p["early"])
+                and "Abrir" in g(ch["early"], "Prompt")
+                and g(ch["early"], "Blocked") == "0"
+                and g(p["early"], "Items") == "0",
+                p["early"] and p["early"]["raw"],
+            )
+        )
+        out.append(
+            check(
+                "08 E segurado > 1,5 s: baú abre ('vazio', Blocked=1) e o loot (13 itens) entra no inventário",
+                bool(ch["full"] and p["full"])
+                and "vazio" in g(ch["full"], "Prompt")
+                and g(ch["full"], "Blocked") == "1"
+                and g(p["full"], "Items") == "13",
+                p["full"] and p["full"]["raw"],
+            )
+        )
+        out.append(
+            check(
+                "08 Q: poção usada (vida +35, itens -1)",
+                bool(p["full"] and p["potion"])
+                and hp(p["potion"]) - hp(p["full"]) == 35
+                and num(p["full"], "Items") - num(p["potion"], "Items") == 1,
+                p["potion"] and p["potion"]["raw"],
+            )
+        )
+        out.append(
+            check(
+                "08 G: solta 1 item (itens -1)",
+                bool(p["potion"] and p["drop"]) and num(p["potion"], "Items") - num(p["drop"], "Items") == 1,
+                p["drop"] and p["drop"]["raw"],
+            )
+        )
+        out.append(
+            check(
+                "08 LeftShift: Dash (cooldown > 0 e deslocamento > 50 cm em 0,5 s)",
+                bool(p["drop"] and p["dash"])
+                and cd(p["dash"], "Dash") > 0
+                and math.dist(loc(p["drop"]), loc(p["dash"])) > 50,
+                p["dash"] and p["dash"]["raw"],
+            )
+        )
+        saved = re.search(r".*CatalogSave: slot 'Quick' gravado[^\n]*", raw)
+        out.append(check("08 F5: grava o slot Quick", bool(saved), saved and saved.group(0)[-240:]))
+        out.append(
+            check(
+                "08 F9: estado muda depois do save e volta ao salvo (vida, itens, posição)",
+                all(p[n] for n in ("saved", "changed", "loaded"))
+                and all(g(p["saved"], k) != g(p["changed"], k) for k in ("Health", "Items"))
+                and all(g(p["loaded"], k) == g(p["saved"], k) for k in ("Health", "Items", "Loc")),
+                p["loaded"] and p["loaded"]["raw"],
+            )
+        )
+        dummy = aimed(srv, "Dummy")
+        before, after = find(srv, "k_melee_before", "Actor", dummy), find(srv, "k_melee_after", "Actor", dummy)
+        out.append(
+            check(
+                f"08 LeftMouseButton: Melee no boneco {dummy} (vida 75 -> 50)",
+                bool(before and after) and g(before, "Health") == "75/75" and g(after, "Health") == "50/75",
+                after and after["raw"],
+            )
+        )
+        return out
+    hn = (
+        "base",
+        "hold1",
+        "hold2",
+        "hold3",
+        "hold4",
+        "early_rel",
+        "full_held",
+        "full_rel",
+        "potion",
+        "menu",
+        "menu_closed",
+    )
+    h = {n: hud(srv, f"k_{n}") for n in hn}
+    if not h["base"] or g(h["base"], "Widget") != "1":
+        out.append(
+            check(
+                "09 bloqueado: USampleHUDWidget não existe neste modo (sample.Debug.Hud sem linha ou Widget=0)",
+                False,
+                h["base"] and h["base"]["raw"],
+            )
+        )
+        return out
+    closed = ("MenuOpen", "IgnoreInput", "Cursor")
+    ticked = any(g(h[n], "Health") for n in hn if h[n])
+    # Verdade do componente (o que a barra desenha): progresso do hold via GetInteractionProgress, sempre disponível.
+    prog = [num(h[n], "CompProgress") for n in ("hold1", "hold2", "hold3", "hold4")]
+    out.append(
+        check(
+            "09 progresso do hold (componente) sobe em cada hold (0<p<1) e volta a 0 ao soltar/abrir",
+            all(0 < x < 1 for x in prog)
+            and prog[0] < prog[1]
+            and prog[2] < prog[3]
+            and all(
+                num(h[n], "CompProgress") == 0 and num(h[n], "CompHolding") == 0 for n in ("early_rel", "full_held")
+            ),
+            h["hold4"] and h["hold4"]["raw"],
+        )
+    )
+    if not ticked:
+        out.append(
+            check(
+                "09 BLOQUEADO: NativeTick do USampleHUDWidget não roda em -nullrhi (vida/prompt/inventário/barra ficam "
+                "vazios com o pawn em 60/100); textos e barra do HUD não verificáveis headless",
+                False,
+                h["hold4"] and h["hold4"]["raw"],
+            )
+        )
+    else:
+        out += hud_text_checks(h)
+    out.append(
+        check(
+            "09 menu de saves fechado no início (MenuOpen=0, IgnoreInput=0, Cursor=0)",
+            all(g(h["base"], k) == "0" for k in closed),
+            h["base"]["raw"],
+        )
+    )
+    out.append(
+        check(
+            "09 Tab abre o menu e o modo de input vira UI (MenuOpen=1, IgnoreInput=1, Cursor=1)",
+            bool(h["menu"]) and all(g(h["menu"], k) == "1" for k in closed),
+            h["menu"] and h["menu"]["raw"],
+        )
+    )
+    out.append(
+        check(
+            "09 segundo Tab fecha o menu e o input volta ao jogo (MenuOpen=0, IgnoreInput=0, Cursor=0)",
+            bool(h["menu_closed"]) and all(g(h["menu_closed"], k) == "0" for k in closed),
+            h["menu_closed"] and h["menu_closed"]["raw"],
+        )
+    )
+    return out
+
+
+def hud_text_checks(h: dict[str, Rec | None]) -> list[tuple[str, bool, str]]:
+    """Textos e barra do USampleHUDWidget (precisam do NativeTick do widget)."""
+    out: list[tuple[str, bool, str]] = []
+    out.append(
+        check(
+            "09 HUD: texto de vida (Vida 60/100) e inventário vazio no início",
+            "Vida 60/100" in g(h["base"], "Health") and "vazio" in g(h["base"], "Inventory"),
+            h["base"]["raw"],
+        )
+    )
+    out.append(
+        check(
+            "09 prompt do baú no HUD: '(E) Abrir baú'",
+            "Abrir baú" in (g(h["hold1"], "Prompt") or ""),
+            h["hold1"] and h["hold1"]["raw"],
+        )
+    )
+    bars = [num(h[n], "Bar") for n in ("hold2", "hold3", "hold4")]
+    out.append(
+        check(
+            "09 barra de hold durante o hold: visível, 0 < progresso < 1 e crescente",
+            all(num(h[n], "BarVisible") == 1 for n in ("hold2", "hold3", "hold4"))
+            and all(0 < b < 1 for b in bars)
+            and bars == sorted(bars),
+            h["hold4"] and h["hold4"]["raw"],
+        )
+    )
+    out.append(
+        check(
+            "09 barra de hold some ao soltar antes do fim e depois de abrir (BarVisible=0; Bar guarda o último valor)",
+            all(num(h[n], "BarVisible") == 0 for n in ("early_rel", "full_held", "full_rel")),
+            h["full_held"] and h["full_held"]["raw"],
+        )
+    )
+    out.append(
+        check(
+            "09 HUD depois de abrir: prompt 'Baú vazio' e inventário listado",
+            "Baú vazio" in (g(h["full_rel"], "Prompt") or "")
+            and "vazio" not in (g(h["full_rel"], "Inventory") or "vazio"),
+            h["full_rel"] and h["full_rel"]["raw"],
+        )
+    )
+    out.append(
+        check(
+            "09 HUD depois da poção: texto de vida (Vida 95/100)",
+            "Vida 95/100" in (g(h["potion"], "Health") or ""),
+            h["potion"] and h["potion"]["raw"],
+        )
+    )
+    return out
+
+
+def evaluate_listen(logs: dict[str, list[Rec]], raw: dict[str, str]) -> list[tuple[str, bool, str]]:
+    """Listen server: srv = host (jogador local), cli1 = cliente remoto. Mesmos temas dos casos 03/04/06."""
+    out: list[tuple[str, bool, str]] = []
+    host, cli = logs["srv"], logs["cli1"]
+
+    def other(recs: list[Rec], label: str) -> Rec | None:
+        return next((r for r in pawns(recs, label) if r["f"]["Locally"] == "0"), None)
+
+    hp0, cp0, remote, alien = local(host, "focus"), local(cli, "focus"), other(host, "focus"), other(cli, "focus")
+    out.append(
+        check(
+            "L03 host: pawn local com Target=baú e Focused=1 (listen anuncia foco ao host)",
+            bool(hp0) and "ChestActor_0" in g(hp0, "Target") and g(hp0, "Focused") == "1",
+            hp0 and hp0["raw"],
+        )
+    )
+    out.append(
+        check(
+            "L03 host: pawn do cliente remoto tem Target=baú mas Focused=0",
+            bool(remote) and "Chest" in g(remote, "Target") and g(remote, "Focused") == "0",
+            remote and remote["raw"],
+        )
+    )
+    out.append(
+        check(
+            "L03 cliente: pawn local com Target=baú e Focused=1",
+            bool(cp0) and "Chest" in g(cp0, "Target") and g(cp0, "Focused") == "1",
+            cp0 and cp0["raw"],
+        )
+    )
+    out.append(
+        check(
+            "L03 cliente: pawn do host sem Target/foco (OwnerOnly)",
+            bool(alien) and g(alien, "Target") == "None" and g(alien, "Focused") == "0",
+            alien and alien["raw"],
+        )
+    )
+    locked = [r for r in snap(cli, "hold_early") if "Trancado" in r["f"].get("Prompt", "")]
+    early_items = [r for lg in (host, cli) for r in pawns(lg, "hold_early") if r["f"]["Items"] != "0"]
+    chest0 = find(host, "hold_early", "Interactable", "ChestActor_0")
+    out.append(
+        check(
+            "L04 hold de 1 s (host) e trancado sem chave (cliente): sem itens; cliente vê Trancado/Blocked=1",
+            bool(locked)
+            and locked[0]["f"]["Blocked"] == "1"
+            and not early_items
+            and bool(chest0)
+            and "Abrir" in chest0["f"]["Prompt"],
+            locked[0]["raw"] if locked else None,
+        )
+    )
+    h_full, c_on_host = local(host, "hold_full"), other(host, "hold_full")
+    c_full, h_on_cli = local(cli, "hold_full"), other(cli, "hold_full")
+    chest_host = find(host, "hold_full", "Interactable", "ChestActor_0")
+    out.append(
+        check(
+            "L04 host abre o baú com hold local: 13 itens no host e baú 'vazio'",
+            bool(h_full and chest_host) and g(h_full, "Items") == "13" and "vazio" in chest_host["f"]["Prompt"],
+            h_full and h_full["raw"],
+        )
+    )
+    out.append(
+        check(
+            "L04 cliente (Server RPC) abre o trancado com a chave: 26 itens (1 chave + 25 gemas) no host e no cliente",
+            g(c_on_host, "Items") == "26" and g(c_full, "Items") == "26",
+            c_full and c_full["raw"],
+        )
+    )
+    out.append(
+        check(
+            "L04 cliente não vê o inventário do host (OwnerOnly: Items=0 no pawn alheio)",
+            bool(h_on_cli) and g(h_on_cli, "Items") == "0",
+            h_on_cli and h_on_cli["raw"],
+        )
+    )
+    for who, recs in (("host", host), ("cliente", cli)):
+        results = [r["f"]["resultado"] for r in recs if r["words"][:1] == ["Ability"] and "Dash" in r["words"][1]]
+        mine = local(recs, "dash")
+        out.append(
+            check(
+                f"L06 {who}: Dash 1ª ativação ok, 2ª recusada; cooldown > 0 no pawn local",
+                bool(mine) and results[:2] == ["1", "0"] and cd(mine, "Dash") > 0,
+                mine and mine["raw"],
+            )
+        )
+    h_alien = other(cli, "dash")
+    out.append(
+        check(
+            "L06 cliente: cooldown do Dash do pawn do host = 0 (OwnerOnly)",
+            bool(h_alien) and cd(h_alien, "Dash") == 0,
+            h_alien and h_alien["raw"],
+        )
+    )
+    moved = [
+        a
+        for a in pawns(host, "base")
+        for b in pawns(host, "dash")
+        if a["f"]["Actor"] == b["f"]["Actor"] and math.dist(loc(a), loc(b)) > 100
+    ]
+    out.append(check("L06 host: Dash moveu os 2 pawns > 100 cm", len(moved) == 2, moved and moved[0]["raw"]))
+    dummy = aimed(host, "Dummy")
+    for key, recs in (("host", host), ("cliente", cli)):
+        b, a = find(recs, "melee_before", "Actor", dummy), find(recs, "melee_after", "Actor", dummy)
+        out.append(
+            check(
+                f"L06 {key}: boneco {dummy} vida 75 -> 50 (Melee do cliente via Server RPC)",
+                bool(a and b) and g(b, "Health") == "75/75" and g(a, "Health") == "50/75",
+                a and a["raw"],
+            )
+        )
     return out
 
 
 def schedule_args(script: list[tuple[float, str, str]], role: str, t0: float) -> str:
-    """-ExecCmds para o papel (S servidor/standalone, C clientes); D = Dump rotulado em todos."""
+    """-ExecCmds do papel (S servidor/standalone, C clientes, H pawn local do host; "SH" = host listen); D = Dump."""
     cmds = []
     for t, who, cmd in script:
         if who == "D":
             cmd = f"catalog.Debug.Dump {cmd}"
-        elif who != role:
+        elif who not in role:
             continue
         cmds.append(f"catalog.Debug.Schedule {t0 + t:.2f} {cmd}")  # instante absoluto (relógio comum)
     return ",".join(cmds)
@@ -311,11 +754,20 @@ def kill(procs: list[subprocess.Popen], kill_all: bool = False) -> None:
 
 
 def run_session(
-    args: argparse.Namespace, cmd: Path, name: str, script: list, n_clients: int, lead: float, out: Path
+    args: argparse.Namespace,
+    cmd: Path,
+    name: str,
+    script: list,
+    n_clients: int,
+    lead: float,
+    out: Path,
+    listen: bool = False,
 ) -> dict[str, str]:
     port = args.port
     procs: list[subprocess.Popen] = []
     logs = {"srv": out / f"{name}_srv.log"}
+    for stale in out.glob(f"{name}_*.log"):  # log de uma execução anterior enganaria a espera pelo rótulo final
+        stale.unlink()
     try:
         t0 = time.monotonic()
         t_zero = time.time() + lead  # T=0 do roteiro: igual para todos os processos
@@ -324,10 +776,10 @@ def run_session(
                 launch(
                     cmd,
                     args.project,
-                    "/Engine/Maps/Entry",
-                    ["-server", f"-port={port}"],
+                    "/Engine/Maps/Entry?listen" if listen else "/Engine/Maps/Entry",
+                    ["-game" if listen else "-server", f"-port={port}"],
                     logs["srv"],
-                    schedule_args(script, "S", t_zero),
+                    schedule_args(script, "SH" if listen else "S", t_zero),
                 )
             )
             while "listening on port" not in (
@@ -349,11 +801,18 @@ def run_session(
                     )
                 )
         else:
+            # Um processo só: o roteiro é relativo ao -ExecCmds (roda depois de carregar o mapa); o boot da engine varia
+            # com a carga da máquina e um T0 absoluto fixo perdia os primeiros comandos.
             procs.append(
-                launch(
-                    cmd, args.project, "/Engine/Maps/Entry", ["-game"], logs["srv"], schedule_args(script, "S", t_zero)
-                )
+                launch(cmd, args.project, "/Engine/Maps/Entry", ["-game"], logs["srv"], schedule_args(script, "S", 5.0))
             )
+            last = next(c for _, w, c in reversed(script) if w == "D")
+            while f"Snap={last}" not in (logs["srv"].read_text("utf-8", "replace") if logs["srv"].exists() else ""):
+                if time.monotonic() - t0 > lead + script[-1][0] + 120:
+                    raise RuntimeError(f"standalone não chegou ao rótulo '{last}'")
+                time.sleep(1)
+            time.sleep(2)
+            return {k: p.read_text("utf-8", "replace") for k, p in logs.items()}
         time.sleep(max(1.0, t_zero + script[-1][0] + 6 - time.time()))
     finally:
         kill(procs, args.kill_all)
@@ -366,7 +825,13 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--project", type=Path, required=True, help="caminho do .uproject")
     ap.add_argument("--engine", help="raiz da engine (default: UE_ROOT / descoberta do ue.py)")
-    ap.add_argument("--case", default="all", choices=["03", "04", "06", "07", "all"])
+    ap.add_argument("--case", default="all", choices=["03", "04", "06", "07", "08", "09", "all"])
+    ap.add_argument(
+        "--mode",
+        default="dedicated",
+        choices=["dedicated", "listen"],
+        help="rede dos casos 03/04/06 (padrão dedicated)",
+    )
     ap.add_argument("--out", type=Path, help="pasta dos logs (default: temporária)")
     ap.add_argument("--port", type=int, default=17777)
     ap.add_argument("--lead", type=float, default=75, help="s entre subir o servidor e o T=0 do roteiro (padrão 75)")
@@ -381,17 +846,32 @@ def main(argv: list[str] | None = None) -> int:
     cmd = ue.editor_cmd_path(engine, ue.host_platform())
     out = args.out or Path(tempfile.mkdtemp(prefix="mp_run_"))
     out.mkdir(parents=True, exist_ok=True)
-    cases = ["03", "04", "06", "07"] if args.case == "all" else [args.case]
+    if args.mode == "listen":
+        cases = ["03", "04", "06"]  # 07/08/09 são standalone; no listen os predicados L03/L04/L06 rodam juntos
+        if args.case not in ("all", *cases):
+            print("mp_run: --mode listen só cobre os casos 03/04/06 (--case all)", file=sys.stderr)
+            return 2
+    else:
+        cases = ["03", "04", "06", "07", "08", "09"] if args.case == "all" else [args.case]
     results: list[tuple[str, bool, str]] = []
     try:
-        if set(cases) & {"03", "04", "06"}:
-            raw = run_session(args, cmd, "dedicated", DEDICATED, 2, args.lead, out)
-            parsed = {k: parse_log(v) for k, v in raw.items()}
-            for c in (c for c in cases if c != "07"):
-                results += evaluate(c, parsed, raw)
-        if "07" in cases:
-            raw = run_session(args, cmd, "standalone", STANDALONE, 0, 40, out)
-            results += evaluate("07", {k: parse_log(v) for k, v in raw.items()}, raw)
+        if args.mode == "listen":
+            raw = run_session(args, cmd, "listen", LISTEN, 1, args.lead, out, listen=True)
+            results += evaluate_listen({k: parse_log(v) for k, v in raw.items()}, raw)
+        else:
+            if set(cases) & {"03", "04", "06"}:
+                raw = run_session(args, cmd, "dedicated", DEDICATED, 2, args.lead, out)
+                parsed = {k: parse_log(v) for k, v in raw.items()}
+                for c in (c for c in cases if c in ("03", "04", "06")):
+                    results += evaluate(c, parsed, raw)
+            if "07" in cases:
+                raw = run_session(args, cmd, "standalone", STANDALONE, 0, 40, out)
+                results += evaluate("07", {k: parse_log(v) for k, v in raw.items()}, raw)
+            if set(cases) & {"08", "09"}:
+                raw = run_session(args, cmd, "keys", KEYS, 0, 40, out)
+                parsed = {k: parse_log(v) for k, v in raw.items()}
+                for c in (c for c in cases if c in ("08", "09")):
+                    results += evaluate(c, parsed, raw)
     except (RuntimeError, OSError, subprocess.SubprocessError) as exc:
         print(f"mp_run: erro de execução: {exc}", file=sys.stderr)
         return 2

@@ -256,6 +256,8 @@ def build_failed(rc: int, platform: str, logs: list[Path]) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    for stream in (sys.stdout, sys.stderr):  # consoles cp1252 não imprimem os acentos do --help
+        stream.reconfigure(errors="backslashreplace")
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument(
         "--engine",

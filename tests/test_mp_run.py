@@ -51,3 +51,42 @@ def test_focus_predicate_distinguishes_owner_and_other():
     assert [ok for _, ok, _ in results] == [True, True, True]
     leaked = mp_run.evaluate("03", {"srv": srv, "cli1": owner, "cli2": owner}, {})
     assert not all(ok for _, ok, _ in leaked)
+
+
+def test_schedule_args_listen_host_runs_server_and_local_roles():
+    script = [(1, "S", "catalog.A"), (2, "H", "catalog.B"), (3, "C", "catalog.C")]
+    host = mp_run.schedule_args(script, "SH", 1000).split(",")
+    assert [c.split()[-1] for c in host] == ["catalog.A", "catalog.B"]
+    assert mp_run.schedule_args(script, "C", 1000).endswith("catalog.C")
+
+
+HUD = (
+    "[Debug] Hud Widget=1 Created=0 Health=[Vida 60/100] Prompt=[(E) Abrir baú] Bar=0.450 BarVisible=1 "
+    "Inventory=[Inventário (0/16) |   (vazio)] Message=[] CompProgress=0.450 CompHolding=1 "
+    "MenuOpen=0 IgnoreInput=0 Cursor=0 Snap=k_hold3"
+)
+
+
+def test_parse_hud_line_without_nested_brackets():
+    rec = mp_run.hud(mp_run.parse_log(PREFIX + HUD), "k_hold3")
+    assert rec["f"]["Prompt"] == "(E) Abrir baú" and mp_run.num(rec, "Bar") == 0.45
+    assert rec["f"]["Inventory"] == "Inventário (0/16) |   (vazio)" and rec["f"]["Message"] == ""
+    assert mp_run.hud(mp_run.parse_log(PREFIX + HUD), "outro") is None
+
+
+def test_keys_case_09_blocked_without_widget_and_bar_predicate():
+    blocked = mp_run.evaluate(
+        "09",
+        {"srv": mp_run.parse_log(PREFIX + HUD.replace("Widget=1", "Widget=0").replace("k_hold3", "k_base"))},
+        {"srv": ""},
+    )
+    assert len(blocked) == 1 and not blocked[0][1] and blocked[0][0].startswith("09 bloqueado")
+    no_log = mp_run.evaluate("09", {"srv": []}, {"srv": ""})
+    assert not no_log[0][1]
+
+
+def test_health_and_num_helpers():
+    rec = mp_run.parse_line(PREFIX + PAWN)
+    assert mp_run.hp(rec) == 100.0 and mp_run.hp(None) == -1.0 and mp_run.num(rec, "Nada") == -1.0
+    assert mp_run.local([rec], "x") is None  # rótulo diferente
+    assert mp_run.local([rec], "focus") is rec

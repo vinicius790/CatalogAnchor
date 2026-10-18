@@ -19,7 +19,10 @@
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/SpringArmComponent.h"
+#include "GenericPlatform/GenericPlatformInputDeviceMapper.h"
 #include "HAL/IConsoleManager.h"
+#include "InputCoreTypes.h"
+#include "InputKeyEventArgs.h"
 #include "ICatalogInteractable.h"
 #include "Kismet/GameplayStatics.h"
 #include "UObject/UObjectIterator.h"
@@ -332,6 +335,44 @@ namespace CatalogDebugCommandsPrivate
 			*GetNameSafe(Focus), bHold ? TEXT("hold") : TEXT("tap"), bOk);
 	}
 
+	/** Entrega um evento de tecla ao PlayerController local: o ponto onde o viewport entrega o input real (aí o Enhanced Input mapeia). */
+	bool InjectKey(APlayerController* Controller, const FKey& Key, EInputEvent Event)
+	{
+		const FInputDeviceId Device = IPlatformInputDeviceMapper::Get().GetPrimaryInputDeviceForUser(Controller->GetPlatformUserId());
+		return Controller->InputKey(FInputKeyEventArgs::CreateSimulated(Key, Event, Event == IE_Released ? 0.f : 1.f, -1, Device));
+	}
+
+	/** catalog.Debug.Key <Tecla> [Press|Release|Tap] [segundos]: tecla pelo PlayerController local; Tap = Press e, depois de [segundos] (0,2), Release. */
+	void Key(const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
+	{
+		APlayerController* Controller = World ? World->GetFirstPlayerController() : nullptr;
+		const FKey KeyToSend(Args.IsValidIndex(0) ? FName(*Args[0]) : NAME_None);
+		if (!Controller || !Controller->IsLocalController() || !KeyToSend.IsValid())
+		{
+			Ar.Log(TEXT("uso: catalog.Debug.Key <Tecla: E, G, Q, LeftShift, LeftMouseButton, F5, F9, Tab> [Press|Release|Tap] [segundos] (precisa de PlayerController local)"));
+			return;
+		}
+		const FString Mode = Args.IsValidIndex(1) ? Args[1] : TEXT("Tap");
+		const bool bPress = !Mode.Equals(TEXT("Release"), ESearchCase::IgnoreCase);
+		const bool bHandled = InjectKey(Controller, KeyToSend, bPress ? IE_Pressed : IE_Released);
+		UE_LOG(LogCatalogAnchor, Display, TEXT("[Debug] Key %s %s NetMode=%s pawn=%s tratada=%d"), *KeyToSend.ToString(), bPress ? TEXT("Press") : TEXT("Release"),
+			NetModeText(World->GetNetMode()), *GetNameSafe(Controller->GetPawn()), bHandled);
+		if (Mode.Equals(TEXT("Tap"), ESearchCase::IgnoreCase))
+		{
+			const float Delay = FMath::Max(0.05f, Args.IsValidIndex(2) ? FCString::Atof(*Args[2]) : 0.2f);
+			// Press e Release no mesmo frame podem perder o Started: a tecla fica apertada por ao menos um tick.
+			FTSTicker::GetCoreTicker().AddTicker(TEXT("CatalogDebugKeyRelease"), Delay, [WeakController = TWeakObjectPtr<APlayerController>(Controller), KeyToSend](float)
+			{
+				if (APlayerController* Live = WeakController.Get())
+				{
+					InjectKey(Live, KeyToSend, IE_Released);
+					UE_LOG(LogCatalogAnchor, Display, TEXT("[Debug] Key %s Release (fim do Tap)"), *KeyToSend.ToString());
+				}
+				return false;
+			});
+		}
+	}
+
 	/** catalog.Debug.Schedule <segundos ou Unix UTC> <comando...>: roda o console command depois do atraso no mundo de jogo atual. */
 	void Schedule(const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
 	{
@@ -426,6 +467,10 @@ static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCatalogDebugHoldCommand(
 static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCatalogDebugAbilityCommand(
 	TEXT("catalog.Debug.Ability"), TEXT("catalog.Debug.Ability <tag ou sufixo>: TryActivateAbility do pawn local (cliente: via Server RPC)."),
 	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(&CatalogDebugCommandsPrivate::Ability));
+
+static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCatalogDebugKeyCommand(
+	TEXT("catalog.Debug.Key"), TEXT("catalog.Debug.Key <Tecla> [Press|Release|Tap] [segundos]: injeta a tecla no PlayerController local (Enhanced Input real)."),
+	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(&CatalogDebugCommandsPrivate::Key));
 
 static FAutoConsoleCommandWithWorldArgsAndOutputDevice GCatalogDebugScheduleCommand(
 	TEXT("catalog.Debug.Schedule"), TEXT("catalog.Debug.Schedule <segundos> <comando...>: roda o comando de console depois do atraso."),

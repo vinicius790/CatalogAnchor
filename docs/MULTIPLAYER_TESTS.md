@@ -5,10 +5,29 @@ Cada item tem passos, o resultado esperado (tirado do código atual) e um status
 Os testes automáticos (`CatalogAnchor.*`) cobrem a lógica sem rede; este roteiro cobre o que só
 aparece com servidor e clientes separados.
 
-> **Status geral (2026-10-18): MP-03, MP-04, MP-06 e a restauração do MP-07 executados de verdade, headless.** `py -3 tools/mp_run.py --project <uproject> --case all`
-> sobe servidor dedicado + 2 clientes (e um standalone para o MP-07), roda um roteiro de comandos de console que chamam os mesmos
-> pontos de entrada do input (`BeginInteract`/`EndInteract`, `TryActivateAbility`) e imprime PASS/FAIL com a linha de log:
-> 27 de 27 predicados passaram na última execução (UE 5.8.3, Win64 Development Editor, `-nullrhi`). Ainda sem input humano: F5/F9 pelas teclas, mouse/câmera reais, HUD e listen server para MP-03/04/06.
+> **Status geral (2026-10-18): 41 de 43 predicados PASS** em `py -3 tools/mp_run.py --project <uproject> --case all` (UE 5.8.3, Win64
+> Development Editor, `-nullrhi`; dedicado + 2 clientes para 03/04/06, standalone para 07/08/09). Os 2 FAIL são do caso 09 (HUD) e
+> estão explicados abaixo. **Listen server (`--mode listen`): implementado, NÃO executado** (interrompido por limite de tempo).
+> Sem input humano: mouse/câmera reais e a renderização do HUD.
+
+### Resultados reais por caso
+
+| Caso | Modo | Resultado | Evidência |
+| --- | --- | --- | --- |
+| 03 foco | dedicado + 2 clientes | PASS 3/3 | servidor `Focused=0`, dono `Focused=1`, outro cliente `Target=None` |
+| 04 hold (inclui baú trancado + chave) | dedicado + 2 clientes | PASS 13/13 | `Item_Key` dada ao dono: prompt "Trancado" vira "Abrir baú"; hold de 3 s abre; dono com 39 itens (13+1+25: a chave é checada, **não consumida**) |
+| 06 habilidades | dedicado + 2 clientes | PASS 9/9 | Dash 1ª ok / 2ª `Cooldown`; OwnerOnly; Melee 75 -> 50 em servidor e clientes |
+| 07 save/load por comando | standalone | PASS 4/4 | `Save.Load` devolve vida, itens e posição |
+| 08 teclas reais | standalone | PASS 9/9 | `catalog.Debug.Key` -> `APlayerController::InputKey(FInputKeyEventArgs::CreateSimulated)` -> Enhanced Input: E (hold, solto em 1 s não abre; 3 s abre), Q (+35 de vida, -1 poção), G (-1 item), LeftShift (Dash, `Cd` > 0), F5 (`CatalogSave: slot 'Quick' gravado`), F9 (estado volta ao salvo), LeftMouseButton (Melee 75 -> 50) |
+| 09 menu Tab e input mode | standalone | PASS 3/3 | Tab: `MenuOpen=1 IgnoreInput=1 Cursor=1`; segundo Tab: tudo `0` |
+| 09 progresso do hold (componente) | standalone | PASS | `GetInteractionProgress` 0,27 -> 0,60 e 0,40 -> 0,80 durante os holds; 0 e `Holding=0` ao soltar/abrir |
+| 09 textos/barra do `USampleHUDWidget` | standalone | **bloqueado** (FAIL) | com `-nullrhi` o widget existe (`Widget=1 InViewport=1 Slate=1 Window=2`) mas `NativeTick` não roda: vida/prompt/inventário ficam vazios e `Bar=0` com o pawn em 60/100 (só `ShowMessage`, que é evento, aparece: `Message=[Load Quick: ok]`). `Slate.AllowSlateToSleep 0` não resolveu; causa não identificada. Para verificar: rodar com RHI real |
+| 03/04/06 | **listen server** (`--mode listen`) | **não executado** | script `LISTEN` e predicados `L03/L04/L06` prontos em `tools/mp_run.py`; sem resultado real |
+
+Comandos novos (não-Shipping): `catalog.Debug.Key <Tecla> [Press|Release|Tap] [s]` (`CatalogDebugCommands.cpp`; `CatalogAnchor.Build.cs` ganhou
+`InputCore` e `ApplicationCore` fora de Shipping) e `sample.Debug.Hud [rótulo]` (`SampleDebugCommands.cpp`: estado do HUD UMG e do menu de saves lido
+por reflexão; cria o widget com `ShowMessage("")` se o `DrawHUD` não rodou, o que é o caso sem renderização). Detalhe do que o HUD faz: a barra de hold só
+é atualizada enquanto há interação e depois fica oculta (`Hidden`) com o último valor, não volta a 0.
 
 ## 0. Preparação
 
@@ -170,7 +189,7 @@ Esperado:
 - (2) e (3) O hold é cancelado (`EndInteract` / alvo mudou) e nada é coletado.
 - (4) Sem a chave: prompt "Trancado", hold não começa. Com a chave: abre normalmente.
 
-status: executado/ok (`--case 04`): `Hold Begin` no cliente (Server RPC) devolveu `resultado=1`. Soltar em 1 s: baú segue "Abrir baú" `Blocked=0`, inventário vazio no servidor. Segurar 4 s: baú vira "Baú vazio" `Blocked=1` no servidor e nos 2 clientes, o dono tem 13 itens (3 poções + 10 gemas) no servidor e no cliente dono, o outro cliente vê o pawn do dono com `Items=0` (OwnerOnly). Baú trancado sem chave: "Trancado (precisa de Chave)", `Blocked=1`, inventário continua em 13. NÃO verificado: barra de hold no HUD, desviar a mira no meio do hold, abrir o trancado com a chave.
+status: executado/ok (`--case 04`): `Hold Begin` no cliente (Server RPC) devolveu `resultado=1`. Soltar em 1 s: baú segue "Abrir baú" `Blocked=0`, inventário vazio no servidor. Segurar 4 s: baú vira "Baú vazio" `Blocked=1` no servidor e nos 2 clientes, o dono tem 13 itens (3 poções + 10 gemas) no servidor e no cliente dono, o outro cliente vê o pawn do dono com `Items=0` (OwnerOnly). Baú trancado sem chave: "Trancado (precisa de Chave)", `Blocked=1`, inventário continua em 13. Baú trancado + `Item_Key`: abre (ver tabela). NÃO verificado: barra de hold no HUD (bloqueado, ver caso 09) e desviar a mira no meio do hold.
 
 ### MP-05 Vida, morte e respawn
 
@@ -224,7 +243,7 @@ Esperado:
 - O cliente 2 mantém o próprio inventário; o save do host não o altera.
 - O arquivo `SampleProject/Saved/SaveGames/Quick.sav` tem data de modificação do passo 1.
 
-status: executado/ok para a restauração (standalone `-game`, `--case 07`): `GiveItem Gem 5` + `Hurt 30` + `Aim` no baú, `catalog.Save.Now MPT`; depois `GiveItem Potion 4`, `Hurt 20` e outra posição (Items 9, Health 50/100, Loc diferente); `catalog.Save.Load MPT` devolveu Health 70/100, Items 5 e a posição salva. Antes: `Save.Now`/`List`/`Load` gravaram `mpt.sav` (schema v2, `SaveParticipants=2`). NÃO verificado: F5/F9 por tecla, reiniciar o PIE e o cliente remoto no listen.
+status: executado/ok para a restauração (standalone `-game`, `--case 07`): `GiveItem Gem 5` + `Hurt 30` + `Aim` no baú, `catalog.Save.Now MPT`; depois `GiveItem Potion 4`, `Hurt 20` e outra posição (Items 9, Health 50/100, Loc diferente); `catalog.Save.Load MPT` devolveu Health 70/100, Items 5 e a posição salva. Antes: `Save.Now`/`List`/`Load` gravaram `mpt.sav` (schema v2, `SaveParticipants=2`). F5/F9 por tecla: PASS no standalone (caso 08). NÃO verificado: reiniciar o PIE e o cliente remoto no listen.
 
 ## 3. Testes automáticos de mundo relacionados
 

@@ -19,6 +19,12 @@ public class CatalogAnchor : ModuleRules
 			"GameplayTags",
 		});
 
+		// catalog.Debug.Key (CatalogDebugCommands.cpp, só fora de Shipping) injeta teclas: FKey e o mapeador de dispositivos.
+		if (Target.Configuration != UnrealTargetConfiguration.Shipping)
+		{
+			PrivateDependencyModuleNames.AddRange(new string[] { "InputCore", "ApplicationCore" });
+		}
+
 		// GAS fica opcional: ligue "GameplayAbilities" no .uplugin e descomente abaixo.
 		// PublicDependencyModuleNames.AddRange(new string[] { "GameplayAbilities", "GameplayTags", "GameplayTasks" });
 	}
