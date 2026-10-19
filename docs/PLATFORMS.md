@@ -79,3 +79,9 @@ Win64, Mac e Linux em `SupportedTargetPlatforms`. Rode-o antes de abrir PR.
 | Verificado em máquina real nesta revisão | sim | não | não |
 
 Variáveis opcionais por SO: `UE_ROOT_WINDOWS`, `UE_ROOT_MACOS`, `UE_ROOT_LINUX` (ou `UE_ROOT` para todos).
+
+## Servidor dedicado e cliente
+
+O sample tem `SampleCatalogServer.Target.cs` e `SampleCatalogClient.Target.cs` (cópia do alvo Game com `TargetType.Server`/`Client`),
+necessários para cozinhar um servidor dedicado (principal uso em Linux). Eles ainda não foram compilados nem cozinhados.
+Para checar includes completos (o que o clang do Mac/Linux exige), use `py -3 tools/ue.py build-plugin --strict-includes`.

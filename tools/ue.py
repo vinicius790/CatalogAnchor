@@ -154,14 +154,19 @@ def editor_cmd_path(engine: Path, platform: str) -> Path:
     return binaries / "UnrealEditor"
 
 
-def build_plugin_command(engine: Path, platform: str) -> list[str]:
-    return [
+def build_plugin_command(engine: Path, platform: str, strict_includes: bool = False) -> list[str]:
+    cmd = [
         str(runuat_path(engine, platform)),
         "BuildPlugin",
         f"-Plugin={UPLUGIN}",
         f"-Package={PACKAGE_DIR}",
         f"-TargetPlatforms={platform}",
     ]
+    if strict_includes:
+        # Sem unity nem PCH: acha include faltando que o build unificado mascara (clang no Mac/Linux é intolerante).
+        # Parâmetro do BuildPlugin do UAT; não conferido contra a engine instalada nesta sessão.
+        cmd.append("-StrictIncludes")
+    return cmd
 
 
 def build_editor_command(engine: Path, platform: str, report_dir: Path) -> list[str]:
@@ -288,7 +293,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="command", required=True)
-    sub.add_parser("build-plugin", parents=[common], help="RunUAT BuildPlugin -> dist/CatalogAnchor")
+    plugin_parser = sub.add_parser("build-plugin", parents=[common], help="RunUAT BuildPlugin -> dist/CatalogAnchor")
+    plugin_parser.add_argument(
+        "--strict-includes", action="store_true", help="sem unity/PCH: detecta include faltando (BuildPlugin -StrictIncludes)"
+    )
     sub.add_parser("test", parents=[common], help="compila o editor do sample e roda os testes CatalogAnchor")
     args = parser.parse_args(argv)
     make_console_safe()
@@ -310,7 +318,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "build-plugin":
         uat_logs = report_dir / "UAT"  # o UAT esvazia essa pasta ao iniciar: não aponte para o report-dir inteiro
         env = {**os.environ, "uebp_LogFolder": str(uat_logs)}
-        rc = run_step(build_plugin_command(engine, platform), platform, args.dry_run, env)
+        rc = run_step(build_plugin_command(engine, platform, args.strict_includes), platform, args.dry_run, env)
         logs = sorted(uat_logs.rglob("*.txt")) if uat_logs.is_dir() else []
         return build_failed(rc, platform, logs) if rc else 0
 

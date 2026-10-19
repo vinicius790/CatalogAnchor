@@ -1,2 +1,0 @@
-Icone do plugin (128x128) pode ser colocado aqui como Icon128.png e referenciado
-no .uplugin via "Icon": "Resources/Icon128.png". Omitido de proposito neste scaffold.

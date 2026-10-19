@@ -1,7 +1,7 @@
 {
 	"FileVersion": 3,
-	"Version": 5,
-	"VersionName": "0.5.0",
+	"Version": 6,
+	"VersionName": "0.6.0",
 	"FriendlyName": "Catalog Anchor (UE5)",
 	"Description": "Unreal Engine 5.8+. Plugin C++ Runtime+Editor de gameplay reutilizável: interação replicada com hold, inventário em FastArray, habilidades com Gameplay Tags e cooldown replicado, vida replicada com dano/cura/morte, save versionado com migração e Data Validation. Não é um jogo cozido.",
 	"Category": "Gameplay",

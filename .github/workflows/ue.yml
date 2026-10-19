@@ -78,6 +78,10 @@ jobs:
       - name: BuildPlugin (RunUAT)
         shell: bash
         run: ${{ matrix.python }} tools/ue.py build-plugin --report-dir "$REPORTS/build-plugin"
+      - name: BuildPlugin sem unity/PCH (includes completos)
+        if: ${{ vars.UE_STRICT_INCLUDES == 'true' }}
+        shell: bash
+        run: ${{ matrix.python }} tools/ue.py build-plugin --strict-includes --report-dir "$REPORTS/build-plugin-strict"
       - name: Build SampleCatalogEditor + testes de automação
         shell: bash
         run: ${{ matrix.python }} tools/ue.py test --report-dir "$REPORTS/test"

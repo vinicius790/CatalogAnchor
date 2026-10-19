@@ -6,8 +6,13 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) · versões
 
 ## [0.6.0] — em preparação
 
-Entradas abaixo: só o que a documentação e o gerador entregam; o restante da 0.6.0 (cross-platform no C++, otimização,
-gamepad, matriz de CI) é registrado pelo agente principal quando for entregue e verificado.
+Itens marcados *(não verificado)* foram escritos sem compilar: o toolchain local foi desinstalado depois do commit `876aec1`,
+último estado verificado (build Editor + Shipping, plugin empacotado, 73 testes de automação, multiplayer headless).
+
+- Alvos `SampleCatalogServer` e `SampleCatalogClient` no sample, para servidor dedicado e cliente cozinhados *(não verificado)*.
+- `tools/ue.py build-plugin --strict-includes` (BuildPlugin sem unity/PCH) e passo opcional no `ue.yml` (`UE_STRICT_INCLUDES=true`) *(não verificado contra a engine)*.
+- Ícone real do plugin (`Resources/Icon128.png`) no lugar do `placeholder.txt`.
+- Fins de linha dos arquivos rastreados em LF.
 
 ### Adicionado
 - `tools/gen_api_docs.py` (stdlib): gera `docs/API.md` a partir dos headers públicos (UCLASS, USTRUCT, UENUM, interfaces,

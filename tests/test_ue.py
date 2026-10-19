@@ -448,3 +448,10 @@ def test_main_posix_runs_argv_list_not_a_command_line(no_engine_env, tmp_path: P
     no_engine_env.setattr(ue.subprocess, "run", _fake_run(calls, [0]))
     assert ue.main(["build-plugin", "--engine", str(engine), "--report-dir", str(tmp_path / "r")]) == 0
     assert isinstance(calls[0][0], list)
+
+
+def test_build_plugin_strict_includes_flag():
+    engine = Path("C:/UE_5.8")
+    assert "-StrictIncludes" not in ue.build_plugin_command(engine, "Win64")
+    assert ue.build_plugin_command(engine, "Win64", strict_includes=True)[-1] == "-StrictIncludes"
+    assert ue.build_plugin_command(Path("/opt/UE_5.8"), "Linux", True)[-1] == "-StrictIncludes"
