@@ -2,6 +2,12 @@
 #include "CatalogSaveTypes.h"
 #include "CatalogAnchor.h"
 #include "Misc/Crc.h"
+#include "Misc/StringBuilder.h"
+
+// O CRC lê os bytes crus de int64/double/TCHAR: o formato assume little-endian e TCHAR de 16 bits
+// (Win64, Mac, Linux e LinuxArm64 cumprem). Outra plataforma precisa canonizar os bytes antes.
+static_assert(PLATFORM_LITTLE_ENDIAN, "CRC do save assume little-endian.");
+static_assert(sizeof(TCHAR) == 2, "CRC do save assume TCHAR de 16 bits.");
 
 namespace CatalogSaveTypesPrivate
 {
@@ -38,12 +44,21 @@ namespace CatalogSaveTypesPrivate
 		void Str(const FString& Value)
 		{
 			Int(Value.Len());
-			Raw(*Value, Value.Len() * sizeof(TCHAR));
+			Raw(*Value, static_cast<int32>(Value.Len() * sizeof(TCHAR)));
 		}
 
+		// Mesmos bytes de Str(ToString().ToLower()), sem heap (nome curto cabe no buffer).
 		void Name(FName Value)
 		{
-			Str(Value.ToString().ToLower());
+			TStringBuilder<128> Text;
+			Value.ToString(Text);
+			TCHAR* Chars = Text.GetData();
+			for (int32 Index = 0; Index < Text.Len(); ++Index)
+			{
+				Chars[Index] = TChar<TCHAR>::ToLower(Chars[Index]);
+			}
+			Int(Text.Len());
+			Raw(Chars, static_cast<int32>(Text.Len() * sizeof(TCHAR)));
 		}
 	};
 

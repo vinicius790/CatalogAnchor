@@ -23,7 +23,8 @@ struct FInputActionValue;
  * Entrada via Enhanced Input criado em código (sem assets): as ações e o mapping context
  * nascem na primeira vez que o pawn é controlado localmente — input nunca replica. O contexto é
  * adicionado ao ser possuído por um PlayerController local e removido ao perder o controller ou sair
- * do jogo, para não sobrar no LocalPlayer quando outro pawn é possuído.
+ * do jogo, para não sobrar no LocalPlayer quando outro pawn é possuído. Teclado/mouse e gamepad
+ * (sticks, A/X/Y, RB/RT, D-pad, Menu) mapeados no mesmo contexto.
  */
 UCLASS()
 class ASampleCatalogCharacter : public ACharacter

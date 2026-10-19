@@ -26,6 +26,8 @@ ASampleArenaActor::ASampleArenaActor()
 	bReplicates = true;
 	// É o chão de todo mundo: replica para cada cliente, perto ou longe.
 	bAlwaysRelevant = true;
+	// Cenário estático: nunca muda depois do spawn.
+	SetNetUpdateFrequency(1.f);
 
 	SetRootComponent(CreateDefaultSubobject<USceneComponent>(TEXT("Root")));
 

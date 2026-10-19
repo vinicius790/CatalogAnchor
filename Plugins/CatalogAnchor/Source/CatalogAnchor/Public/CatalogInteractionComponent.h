@@ -92,6 +92,13 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Catalog|Interaction")
 	bool bAutoTrace = true;
 
+	/**
+	 * Intervalo (s) entre traces automáticos do servidor (bAutoTrace); 0 = todo tick. Hold e tentativas
+	 * (TryInteract/BeginInteract) sempre fazem trace fresco; 0.05 s (20 Hz) não muda a sensação da mira.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Catalog|Interaction", meta = (ClampMin = "0.0"))
+	float TraceIntervalSeconds = 0.05f;
+
 	/** Intervalo mínimo entre tentativas aceitas pelo servidor (s): barra spam de RPC/tecla. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Catalog|Interaction", meta = (ClampMin = "0.0"))
 	float InteractionCooldownSeconds = 0.25f;
@@ -260,4 +267,7 @@ private:
 
 	/** Próximo instante (relógio do servidor) em que uma tentativa é aceita (só servidor). */
 	double NextInteractionTime = 0.0;
+
+	/** Tempo (s) até o próximo trace automático; começa em 0 para o 1º tick já traçar (só servidor). */
+	float AutoTraceCountdown = 0.f;
 };

@@ -16,7 +16,9 @@ from __future__ import annotations
 
 import argparse
 import math
+import os
 import re
+import signal
 import subprocess
 import sys
 import tempfile
@@ -756,15 +758,36 @@ def launch(
         "-LogCmds=LogCatalogAnchor Verbose",
         f"-ExecCmds={execcmds}",
     ]
-    return subprocess.Popen(ue.windows_command_line(argv), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)  # noqa: S603
+    return spawn(argv)
 
 
-def kill(procs: list[subprocess.Popen], kill_all: bool = False) -> None:
-    # Só os PIDs próprios (o agente principal pode ter outro UnrealEditor-Cmd rodando); /IM só com --kill-all.
-    # No Git Bash, MSYS2_ARG_CONV_EXCL="*" evita que "/F" vire caminho.
-    targets = [["/PID", str(p.pid)] for p in procs] if not kill_all else [["/IM", "UnrealEditor-Cmd.exe"]]
-    for t in targets:
-        subprocess.run(["taskkill", "/F", "/T", *t], capture_output=True, check=False)  # noqa: S603, S607
+def spawn(argv: list[str], platform: str | None = None) -> subprocess.Popen:
+    """Win: linha crua no estilo UE; POSIX: argv direto, em sessão própria (para matar o grupo inteiro)."""
+    platform = platform or ue.host_platform()
+    cmd = ue.windows_command_line(argv) if platform == "Win64" else argv
+    extra = {} if platform == "Win64" else {"start_new_session": True}
+    return subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **extra)  # noqa: S603
+
+
+def kill(procs: list[subprocess.Popen], kill_all: bool = False, platform: str | None = None) -> None:
+    # Só os processos próprios (o agente principal pode ter outro editor rodando); por nome só com --kill-all.
+    platform = platform or ue.host_platform()
+    if kill_all:
+        # shortcut: Windows não tem pkill; taskkill por imagem é o único jeito de pegar processos alheios.
+        by_name = (
+            ["taskkill", "/F", "/IM", "UnrealEditor-Cmd.exe"]
+            if platform == "Win64"
+            else ["pkill", "-KILL", "-x", "UnrealEditor"]
+        )
+        subprocess.run(by_name, capture_output=True, check=False)  # noqa: S603, S607
+    for p in procs:
+        try:
+            if platform == "Win64":
+                p.kill()
+            else:
+                os.killpg(os.getpgid(p.pid), signal.SIGKILL)  # grupo = editor + filhos
+        except OSError:
+            pass  # já saiu
     for p in procs:
         p.wait(timeout=30)
 
@@ -855,7 +878,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--port", type=int, default=17777)
     ap.add_argument("--lead", type=float, default=75, help="s entre subir o servidor e o T=0 do roteiro (padrão 75)")
     ap.add_argument(
-        "--kill-all", action="store_true", help="taskkill /IM UnrealEditor-Cmd.exe em vez de só os PIDs próprios"
+        "--kill-all",
+        action="store_true",
+        help="mata por nome (taskkill /IM no Windows, pkill -x UnrealEditor no Mac/Linux), não só os próprios",
     )
     args = ap.parse_args(argv)
     engine = ue.find_engine(args.engine)

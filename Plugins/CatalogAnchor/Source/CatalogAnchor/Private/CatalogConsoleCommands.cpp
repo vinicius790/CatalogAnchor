@@ -47,7 +47,7 @@ namespace CatalogConsoleCommandsPrivate
 		}
 	}
 
-	void List(const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
+	void List(const TArray<FString>& /*Args*/, UWorld* World, FOutputDevice& Ar)
 	{
 		UCatalogSaveSubsystem* Save = FindSaveSubsystem(World, Ar);
 		if (!Save)

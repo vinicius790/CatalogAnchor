@@ -27,9 +27,7 @@
 #include "GameFramework/PlayerController.h"
 #include "InputCoreTypes.h"
 #include "Misc/Timespan.h"
-#include "PlatformFeatures.h"
 #include "SampleCatalogHUD.h"
-#include "SaveGameSystem.h"
 #include "Styling/CoreStyle.h"
 
 #define LOCTEXT_NAMESPACE "SampleCatalog"
@@ -132,7 +130,7 @@ void USampleHUDWidget::NativeOnInitialized()
 	Place(Root, MessageText, FAnchors(0.5f, 0.f), FVector2D(0.5f, 0.f), FVector2D(0.f, 20.f));
 
 	// Um literal só: o gather de localização não junta literais concatenados.
-	UTextBlock* Help = MakeText(WidgetTree, 13.f, DimColor, LOCTEXT("HUD.Help", "WASD mover | Mouse olhar | Espaço pular | E (segure) interagir | Shift dash | Botão esq. golpe\nG soltar 1 item | Q usar poção | F5 salvar | F9 carregar | Tab menu de saves (save/load só no host)"));
+	UTextBlock* Help = MakeText(WidgetTree, 13.f, DimColor, LOCTEXT("HUD.Help", "WASD mover | Mouse olhar | Espaço pular | E (segure) interagir | Shift dash | Botão esq. golpe\nG soltar 1 item | Q usar poção | F5 salvar | F9 carregar | Tab menu de saves (save/load só no host)\nGamepad: stick esq. mover | stick dir. olhar | A pular | X (segure) interagir | RB dash | RT golpe | Y poção | D-pad baixo soltar | D-pad esq./dir. salvar/carregar | Menu abre o menu de saves"));
 	Place(Root, Help, FAnchors(0.f, 1.f), FVector2D(0.f, 1.f), FVector2D(20.f, -20.f));
 }
 
@@ -140,6 +138,7 @@ void USampleHUDWidget::ShowMessage(const FText& Text)
 {
 	const UWorld* World = GetWorld();
 	MessageHideTime = (World ? World->GetRealTimeSeconds() : 0.0) + SampleWidgetsPrivate::MessageSeconds;
+	bMessageShown = !Text.IsEmpty();
 	if (MessageText)
 	{
 		MessageText->SetText(Text);
@@ -152,9 +151,10 @@ void USampleHUDWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime
 	Super::NativeTick(MyGeometry, InDeltaTime);
 
 	const UWorld* World = GetWorld();
-	if (World && World->GetRealTimeSeconds() >= MessageHideTime)
+	if (bMessageShown && World && World->GetRealTimeSeconds() >= MessageHideTime)
 	{
 		MessageText->SetText(FText::GetEmpty());
+		bMessageShown = false;
 	}
 
 	const APawn* Pawn = GetOwningPlayerPawn();
@@ -165,60 +165,114 @@ void USampleHUDWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime
 
 	if (const UCatalogHealthComponent* Health = Pawn->FindComponentByClass<UCatalogHealthComponent>())
 	{
-		const bool bLow = Health->GetHealthFraction() < 0.35f;
-		HealthText->SetText(FText::Format(LOCTEXT("HUD.Health", "Vida {0}/{1}"),
-			FText::AsNumber(FMath::RoundToInt(Health->GetHealth())), FText::AsNumber(FMath::RoundToInt(Health->MaxHealth))));
-		HealthText->SetColorAndOpacity(FSlateColor(bLow ? AccentColor : ReadyColor));
-		HealthBar->SetPercent(Health->GetHealthFraction());
-		HealthBar->SetFillColorAndOpacity(bLow ? DangerColor : ReadyColor);
+		const float Fraction = Health->GetHealthFraction();
+		const bool bLow = Fraction < 0.35f;
+		const int32 Current = FMath::RoundToInt(Health->GetHealth());
+		const int32 Max = FMath::RoundToInt(Health->MaxHealth);
+		if (Current != ShownHealth || Max != ShownMaxHealth)
+		{
+			ShownHealth = Current;
+			ShownMaxHealth = Max;
+			HealthText->SetText(FText::Format(LOCTEXT("HUD.Health", "Vida {0}/{1}"), FText::AsNumber(Current), FText::AsNumber(Max)));
+		}
+		if (ShownHealthPercent < 0.f || bLow != bShownLowHealth)
+		{
+			bShownLowHealth = bLow;
+			HealthText->SetColorAndOpacity(FSlateColor(bLow ? AccentColor : ReadyColor));
+			HealthBar->SetFillColorAndOpacity(bLow ? DangerColor : ReadyColor);
+		}
+		if (Fraction != ShownHealthPercent)
+		{
+			ShownHealthPercent = Fraction;
+			HealthBar->SetPercent(Fraction);
+		}
 	}
 
 	if (const UCatalogInventoryComponent* Inventory = Pawn->FindComponentByClass<UCatalogInventoryComponent>())
 	{
 		const TArray<FCatalogInventoryStack> Stacks = Inventory->GetStacks();
-		TArray<FText> Lines;
-		Lines.Add(FText::Format(LOCTEXT("HUD.Inventory", "Inventário ({0}/{1})"), Stacks.Num(), Inventory->Capacity));
+		// Assinatura do que o texto mostra (item, quantidade, capacidade): igual = não reformata.
+		uint32 Key = HashCombine(::GetTypeHash(Stacks.Num()), ::GetTypeHash(Inventory->Capacity));
 		for (const FCatalogInventoryStack& Stack : Stacks)
 		{
-			Lines.Add(FText::Format(LOCTEXT("HUD.InventoryLine", "  {0} x{1}"),
-				Stack.Item ? Stack.Item->DisplayName : LOCTEXT("HUD.UnknownItem", "?"), Stack.Quantity));
+			Key = HashCombine(Key, HashCombine(::GetTypeHash(Stack.Item.Get()), ::GetTypeHash(Stack.Quantity)));
 		}
-		if (Stacks.IsEmpty())
+		if (!bInventoryKeyValid || Key != InventoryKey)
 		{
-			Lines.Add(LOCTEXT("HUD.InventoryEmpty", "  (vazio)"));
+			bInventoryKeyValid = true;
+			InventoryKey = Key;
+			TArray<FText> Lines;
+			Lines.Add(FText::Format(LOCTEXT("HUD.Inventory", "Inventário ({0}/{1})"), Stacks.Num(), Inventory->Capacity));
+			for (const FCatalogInventoryStack& Stack : Stacks)
+			{
+				Lines.Add(FText::Format(LOCTEXT("HUD.InventoryLine", "  {0} x{1}"),
+					Stack.Item ? Stack.Item->DisplayName : LOCTEXT("HUD.UnknownItem", "?"), Stack.Quantity));
+			}
+			if (Stacks.IsEmpty())
+			{
+				Lines.Add(LOCTEXT("HUD.InventoryEmpty", "  (vazio)"));
+			}
+			InventoryText->SetText(FText::Join(INVTEXT("\n"), Lines));
 		}
-		InventoryText->SetText(FText::Join(INVTEXT("\n"), Lines));
 	}
 
 	if (const UCatalogAbilityComponent* Abilities = Pawn->FindComponentByClass<UCatalogAbilityComponent>())
 	{
-		FNumberFormattingOptions OneDecimal;
-		OneDecimal.SetMinimumFractionalDigits(1).SetMaximumFractionalDigits(1);
-		TArray<FText> Lines;
-		Lines.Add(LOCTEXT("HUD.Abilities", "Habilidades"));
-		for (const UCatalogAbilityDefinition* Definition : Abilities->GrantedAbilities)
+		// O cooldown muda a cada frame, mas o texto só a cada décimo de segundo: compara as chaves antes de formatar.
+		const int32 NumAbilities = Abilities->GrantedAbilities.Num();
+		bool bChanged = AbilityKeys.Num() != NumAbilities;
+		AbilityKeys.SetNum(NumAbilities);
+		for (int32 Index = 0; Index < NumAbilities; ++Index)
 		{
-			if (!Definition)
-			{
-				continue;
-			}
-			const float Remaining = Abilities->GetCooldownRemaining(Definition->AbilityTag);
-			const FText State = Remaining > 0.f
-				? FText::Format(LOCTEXT("HUD.Cooldown", "{0} s"), FText::AsNumber(Remaining, &OneDecimal))
-				: LOCTEXT("HUD.Ready", "pronta");
-			Lines.Add(FText::Format(LOCTEXT("HUD.AbilityLine", "  {0}: {1}"), Definition->DisplayName, State));
+			const UCatalogAbilityDefinition* Definition = Abilities->GrantedAbilities[Index];
+			const float Remaining = Definition ? Abilities->GetCooldownRemaining(Definition->AbilityTag) : 0.f;
+			const int32 Key = Remaining > 0.f ? FMath::RoundToInt(Remaining * 10.f) + 1 : 0;
+			bChanged |= AbilityKeys[Index] != Key;
+			AbilityKeys[Index] = Key;
 		}
-		AbilitiesText->SetText(FText::Join(INVTEXT("\n"), Lines));
+		if (bChanged)
+		{
+			FNumberFormattingOptions OneDecimal;
+			OneDecimal.SetMinimumFractionalDigits(1).SetMaximumFractionalDigits(1);
+			TArray<FText> Lines;
+			Lines.Add(LOCTEXT("HUD.Abilities", "Habilidades"));
+			for (int32 Index = 0; Index < NumAbilities; ++Index)
+			{
+				const UCatalogAbilityDefinition* Definition = Abilities->GrantedAbilities[Index];
+				if (!Definition)
+				{
+					continue;
+				}
+				const FText State = AbilityKeys[Index] > 0
+					? FText::Format(LOCTEXT("HUD.Cooldown", "{0} s"), FText::AsNumber((AbilityKeys[Index] - 1) / 10.0, &OneDecimal))
+					: LOCTEXT("HUD.Ready", "pronta");
+				Lines.Add(FText::Format(LOCTEXT("HUD.AbilityLine", "  {0}: {1}"), Definition->DisplayName, State));
+			}
+			AbilitiesText->SetText(FText::Join(INVTEXT("\n"), Lines));
+		}
 	}
 
 	const UCatalogInteractionComponent* Interaction = Pawn->FindComponentByClass<UCatalogInteractionComponent>();
 	const FText Prompt = Interaction ? Interaction->GetCurrentPrompt() : FText::GetEmpty();
-	PromptText->SetText(Prompt.IsEmpty() ? FText::GetEmpty() : FText::Format(LOCTEXT("HUD.Prompt", "[E] {0}"), Prompt));
+	if (!Prompt.EqualTo(ShownPrompt))
+	{
+		ShownPrompt = Prompt;
+		PromptText->SetText(Prompt.IsEmpty() ? FText::GetEmpty() : FText::Format(LOCTEXT("HUD.Prompt", "[E] {0}"), Prompt));
+	}
 	const bool bInteracting = Interaction && Interaction->IsInteracting();
-	InteractBarBox->SetVisibility(bInteracting ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Hidden);
+	if (ShownInteracting != (bInteracting ? 1 : 0))
+	{
+		ShownInteracting = bInteracting ? 1 : 0;
+		InteractBarBox->SetVisibility(bInteracting ? ESlateVisibility::HitTestInvisible : ESlateVisibility::Hidden);
+	}
 	if (bInteracting)
 	{
-		InteractBar->SetPercent(Interaction->GetInteractionProgress());
+		const float Progress = Interaction->GetInteractionProgress();
+		if (Progress != ShownInteractPercent)
+		{
+			ShownInteractPercent = Progress;
+			InteractBar->SetPercent(Progress);
+		}
 	}
 }
 
@@ -311,7 +365,7 @@ FReply USampleSaveMenuWidget::NativeOnKeyDown(const FGeometry& InGeometry, const
 {
 	// Em UI-only o Enhanced Input não vê o Tab: o menu se fecha por aqui (o foco pode estar num botão filho; a tecla sobe até nós).
 	const FKey Key = InKeyEvent.GetKey();
-	if (Key == EKeys::Tab || Key == EKeys::Escape)
+	if (Key == EKeys::Tab || Key == EKeys::Escape || Key == EKeys::Gamepad_Special_Right || Key == EKeys::Gamepad_FaceButton_Right)
 	{
 		HandleCloseClicked();
 		return FReply::Handled();

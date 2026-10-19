@@ -4,6 +4,23 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) · versões
 
 ## [Unreleased]
 
+## [0.6.0] — em preparação
+
+Entradas abaixo: só o que a documentação e o gerador entregam; o restante da 0.6.0 (cross-platform no C++, otimização,
+gamepad, matriz de CI) é registrado pelo agente principal quando for entregue e verificado.
+
+### Adicionado
+- `tools/gen_api_docs.py` (stdlib): gera `docs/API.md` a partir dos headers públicos (UCLASS, USTRUCT, UENUM, interfaces,
+  delegates, UPROPERTY e UFUNCTION públicos, com o comentário `/** */`), agrupado por área e com índice; saída
+  determinística. `--check` sai ≠ 0 se o arquivo estiver desatualizado (coberto pelo pytest, que roda no CI).
+- `docs/API.md`: referência de API gerada.
+- `docs/QUICKSTART.md`: do zero a "abrir um baú e salvar" em 10 passos, em C++ e Blueprint.
+
+### Alterado
+- `README.md` reescrito como vitrine (recursos, plataformas, instalação em poucas linhas, estado real da verificação);
+  nome sugerido do repositório: `CatalogAnchor`.
+- `LIMITATIONS.md`: shipping e empacotamento em Windows passam a constar como verificados; Mac/Linux seguem não executados.
+
 ## [0.5.0] — 2026-10-13
 
 ### Adicionado

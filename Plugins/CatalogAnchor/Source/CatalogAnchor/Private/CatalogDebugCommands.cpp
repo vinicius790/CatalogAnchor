@@ -387,7 +387,7 @@ namespace CatalogDebugCommandsPrivate
 		{
 			Seconds -= (FDateTime::UtcNow() - FDateTime::FromUnixTimestamp(0)).GetTotalSeconds();
 		}
-		const float Delay = FMath::Max(0.1, Seconds);
+		const float Delay = static_cast<float>(FMath::Max(0.1, Seconds));
 		FString Command = FString::Join(TArrayView<const FString>(Args).Slice(1, Args.Num() - 1), TEXT(" "));
 		FTSTicker::GetCoreTicker().AddTicker(TEXT("CatalogDebugSchedule"), Delay, [Command](float)
 		{

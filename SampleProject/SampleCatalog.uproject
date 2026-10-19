@@ -2,6 +2,11 @@
 	"FileVersion": 3,
 	"EngineAssociation": "5.8",
 	"Category": "Catalog Sample",
+	"TargetPlatforms": [
+		"Windows",
+		"Mac",
+		"Linux"
+	],
 	"Description": "Sample jogável do plugin CatalogAnchor montado 100% em C++ (sem .uasset/.umap): interação com hold, inventário, habilidades e save.",
 	"Modules": [
 		{

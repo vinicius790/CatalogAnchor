@@ -8,6 +8,7 @@
 #include "DrawDebugHelpers.h"
 #include "Engine/CollisionProfile.h"
 #include "Engine/World.h"
+#include "GameFramework/DefaultPawn.h"
 #include "HAL/IConsoleManager.h"
 #include "UObject/Package.h"
 #include <limits>
@@ -359,6 +360,95 @@ bool FCatalogInteractionFailureEventsTest::RunTest(const FString& Parameters)
 	TestFalse(TEXT("Cooldown recusa"), Interaction->TryInteract());
 	ExpectFailure(TEXT("Cooldown"), ECatalogInteractionFailReason::Cooldown, Target);
 	TestEqual(TEXT("Cooldown nao interage"), Target->InteractCount, 2);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCatalogInteractionTraceIntervalTest, "CatalogAnchor.Interaction.TraceInterval",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::CommandletContext | EAutomationTestFlags::ProductFilter)
+
+bool FCatalogInteractionTraceIntervalTest::RunTest(const FString& Parameters)
+{
+	using namespace CatalogInteractionExtraTestsPrivate;
+	if (CatalogTestGuards::ShouldSkipDuringPIE(*this))
+	{
+		return true;
+	}
+
+	FTestWorldWrapper WorldWrapper;
+	if (!OpenWorld(*this, WorldWrapper))
+	{
+		return false;
+	}
+	UWorld* World = WorldWrapper.GetTestWorld();
+
+	ACatalogTestInteractable* Owner = SpawnInteractable(World, FVector::ZeroVector);
+	ACatalogTestInteractable* Target = SpawnInteractable(World, FVector(200.0, 0.0, 0.0));
+	if (!TestTrue(TEXT("Atores criados"), Owner && Target))
+	{
+		return false;
+	}
+	UCatalogInteractionComponent* Interaction = AddInteraction(Owner, 400.f);
+	Interaction->bAutoTrace = true;
+	Interaction->TraceIntervalSeconds = 1.f;
+	const FVector Away(200.0, 1000.0, 0.0);
+
+	Interaction->TickComponent(0.1f, LEVELTICK_All, nullptr);
+	TestTrue(TEXT("1o tick ja traca"), Interaction->CurrentTarget.Get() == Target);
+	Target->SetActorLocation(Away);
+	Interaction->TickComponent(0.1f, LEVELTICK_All, nullptr);
+	TestTrue(TEXT("Dentro do intervalo nao retraca"), Interaction->CurrentTarget.Get() == Target);
+	Interaction->TickComponent(1.f, LEVELTICK_All, nullptr);
+	TestNull(TEXT("Passado o intervalo retraca"), Interaction->CurrentTarget.Get());
+
+	// Intervalo 0 = todo tick (comportamento antigo).
+	Interaction->TraceIntervalSeconds = 0.f;
+	Interaction->TickComponent(1.f, LEVELTICK_All, nullptr);
+	Target->SetActorLocation(FVector(200.0, 0.0, 0.0));
+	Interaction->TickComponent(0.001f, LEVELTICK_All, nullptr);
+	TestTrue(TEXT("Intervalo 0 acha no tick seguinte"), Interaction->CurrentTarget.Get() == Target);
+	Target->SetActorLocation(Away);
+	Interaction->TickComponent(0.001f, LEVELTICK_All, nullptr);
+	TestNull(TEXT("Intervalo 0 perde no tick seguinte"), Interaction->CurrentTarget.Get());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCatalogInteractionUnpossessedPawnTest, "CatalogAnchor.Interaction.UnpossessedPawnNoAutoTrace",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::CommandletContext | EAutomationTestFlags::ProductFilter)
+
+bool FCatalogInteractionUnpossessedPawnTest::RunTest(const FString& Parameters)
+{
+	using namespace CatalogInteractionExtraTestsPrivate;
+	if (CatalogTestGuards::ShouldSkipDuringPIE(*this))
+	{
+		return true;
+	}
+
+	FTestWorldWrapper WorldWrapper;
+	if (!OpenWorld(*this, WorldWrapper))
+	{
+		return false;
+	}
+	UWorld* World = WorldWrapper.GetTestWorld();
+
+	FActorSpawnParameters AlwaysSpawn;
+	AlwaysSpawn.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	ADefaultPawn* Pawn = World->SpawnActor<ADefaultPawn>(FVector::ZeroVector, FRotator::ZeroRotator, AlwaysSpawn);
+	ACatalogTestInteractable* Target = SpawnInteractable(World, FVector(200.0, 0.0, 0.0));
+	if (!TestTrue(TEXT("Atores criados"), Pawn && Target && Pawn->GetController() == nullptr))
+	{
+		return false;
+	}
+	UCatalogInteractionComponent* Interaction = AddInteraction(Pawn, 400.f);
+	Interaction->bAutoTrace = true;
+	Interaction->TraceIntervalSeconds = 0.f;
+
+	// Sem possessão o tick automático não traça (e não deixa alvo preso)...
+	Interaction->TickComponent(0.1f, LEVELTICK_All, nullptr);
+	TestNull(TEXT("Pawn sem controller nao auto-traca"), Interaction->CurrentTarget.Get());
+	// ...mas a tentativa explícita ainda traça fresco.
+	TestTrue(TEXT("RefreshTarget manual ainda acha"), Interaction->RefreshTarget() == Target);
+	Interaction->TickComponent(0.1f, LEVELTICK_All, nullptr);
+	TestNull(TEXT("Tick limpa o alvo antigo"), Interaction->CurrentTarget.Get());
 	return true;
 }
 

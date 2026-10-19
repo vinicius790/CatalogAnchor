@@ -1,8 +1,8 @@
 # Build real do C++ (UBT/UAT) + testes de automação CatalogAnchor no editor headless.
-# Precisa de runner self-hosted com UE 5.8, Visual Studio 2022 17.14+ (MSVC 14.44) ou 2026 (14.50),
-# Windows SDK >= 10.0.19041 e Python 3.10+ (launcher "py"). Labels: self-hosted, windows, ue-5.8.
-# Só roda com a variável de repositório UE_RUNNER_ENABLED=true (ou disparo manual), para não ficar
-# na fila em forks/repos sem esse runner. Variável opcional UE_ROOT: raiz da engine (default: registro, LauncherInstalled.dat
+# Um job por SO em runner self-hosted com UE 5.8 e Python 3.10+: labels [self-hosted, windows|macos|linux, ue-5.8].
+# Windows: VS 2022 17.14+ (MSVC 14.44) ou 2026 (14.50) + Windows SDK; Mac: Xcode 15.2+; Linux: clang do Linux_SDK.json
+# (docs/PLATFORMS.md). Cada job só roda com a variável de repositório UE_RUNNER_<WINDOWS|MACOS|LINUX>_ENABLED=true
+# (ou disparo manual), para não ficar na fila em forks/repos sem esse runner. Variável opcional UE_ROOT: raiz da engine (default: registro, LauncherInstalled.dat
 # ou Program Files/Epic Games/UE_5.8). Sem Visual Studio no runner: defina UE_SDKS_ROOT (tools/get_msvc.py); o UBT herda.
 name: UE
 
@@ -20,15 +20,47 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Decide quais SOs rodam (github-hosted, barato): matriz dinâmica a partir das variáveis UE_RUNNER_<OS>_ENABLED.
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.pick.outputs.matrix }}
+    env:
+      ENABLED_WINDOWS: ${{ vars.UE_RUNNER_WINDOWS_ENABLED }}
+      ENABLED_MACOS: ${{ vars.UE_RUNNER_MACOS_ENABLED }}
+      ENABLED_LINUX: ${{ vars.UE_RUNNER_LINUX_ENABLED }}
+      ROOT_WINDOWS: ${{ vars.UE_ROOT_WINDOWS || vars.UE_ROOT }}
+      ROOT_MACOS: ${{ vars.UE_ROOT_MACOS || vars.UE_ROOT }}
+      ROOT_LINUX: ${{ vars.UE_ROOT_LINUX || vars.UE_ROOT }}
+      MANUAL: ${{ github.event_name == 'workflow_dispatch' }}
+      # PR de fork nunca roda no runner self-hosted (código de terceiros na máquina com a engine).
+      FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+    steps:
+      - id: pick
+        run: |
+          items=()
+          for os in windows macos linux; do
+            up=$(echo "$os" | tr a-z A-Z)
+            en="ENABLED_$up"; root="ROOT_$up"
+            if [ "$FORK" != true ] && { [ "${!en}" = true ] || [ "$MANUAL" = true ]; }; then
+              py=python3; [ "$os" = windows ] && py="py -3"
+              items+=("{\"os\":\"$os\",\"python\":\"$py\",\"root\":\"${!root}\"}")
+            fi
+          done
+          echo "matrix=[$(IFS=,; echo "${items[*]}")]" >> "$GITHUB_OUTPUT"
+
   build-and-test:
-    # PR de fork nunca roda no runner self-hosted (código de terceiros na máquina com a engine).
-    if: >-
-      (vars.UE_RUNNER_ENABLED == 'true' || github.event_name == 'workflow_dispatch') &&
-      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: [self-hosted, windows, ue-5.8]
+    name: ue (${{ matrix.os }})
+    needs: setup
+    if: needs.setup.outputs.matrix != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.setup.outputs.matrix) }}
+    runs-on: [self-hosted, "${{ matrix.os }}", ue-5.8]
     timeout-minutes: 120
     env:
-      UE_ROOT: ${{ vars.UE_ROOT }}
+      UE_ROOT: ${{ matrix.root }}
       PYTHONDONTWRITEBYTECODE: "1"
       PYTHONIOENCODING: utf-8
       REPORTS: ${{ github.workspace }}/ue-reports
@@ -39,17 +71,20 @@ jobs:
         with:
           clean: false
       - name: Limpar relatórios e arquivos soltos (mantém Intermediate/Binaries)
+        shell: bash
         run: |
           git clean -fd
-          if (Test-Path Saved/Reports) { Remove-Item -Recurse -Force Saved/Reports }
+          rm -rf Saved/Reports
       - name: BuildPlugin (RunUAT)
-        run: py -3 tools/ue.py build-plugin --report-dir "${{ env.REPORTS }}/build-plugin"
+        shell: bash
+        run: ${{ matrix.python }} tools/ue.py build-plugin --report-dir "$REPORTS/build-plugin"
       - name: Build SampleCatalogEditor + testes de automação
-        run: py -3 tools/ue.py test --report-dir "${{ env.REPORTS }}/test"
+        shell: bash
+        run: ${{ matrix.python }} tools/ue.py test --report-dir "$REPORTS/test"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: ue-reports
+          name: ue-reports-${{ matrix.os }}
           # UAT/*.txt (BuildPlugin + UBT), UBT.log, Editor.log, index.json/index.html (-ReportExportPath)
           path: ${{ env.REPORTS }}
           if-no-files-found: warn

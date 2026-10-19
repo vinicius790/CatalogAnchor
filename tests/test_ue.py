@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -396,3 +397,54 @@ def test_summarize_report_tolerates_unexpected_json_shapes(tmp_path: Path, paylo
     (tmp_path / "index.json").write_text(payload, encoding="utf-8")
     ok, summary = ue.summarize_report(tmp_path)  # sem AttributeError/ValueError
     assert not ok and summary
+
+
+@pytest.mark.parametrize(
+    ("platform", "dat"),
+    [
+        ("Win64", ("Epic", "UnrealEngineLauncher", "LauncherInstalled.dat")),
+        ("Mac", ("Epic", "UnrealEngineLauncher", "LauncherInstalled.dat")),
+        ("Linux", (".config", "Epic", "UnrealEngineLauncher", "LauncherInstalled.dat")),
+    ],
+)
+def test_launcher_dat_default_location_per_platform(monkeypatch, tmp_path: Path, platform: str, dat: tuple[str, ...]):
+    seen: list[Path] = []
+    monkeypatch.setattr(ue, "host_platform", lambda: platform)
+    monkeypatch.setenv("ProgramData", str(tmp_path / "pd"))
+    monkeypatch.setattr(Path, "home", lambda: tmp_path / "home")
+    monkeypatch.setattr(Path, "read_text", lambda self, **kw: seen.append(self) or (_ for _ in ()).throw(OSError()))
+    assert ue.launcher_engine_dir("5.8") is None
+    assert seen[0].parts[-len(dat) :] == dat
+    assert (platform == "Linux") == (".config" in seen[0].parts)
+
+
+def test_program_files_scan_finds_linux_home_install(monkeypatch, tmp_path: Path):
+    engine = tmp_path / "home" / "UnrealEngine"
+    (engine / "Engine" / "Build" / "BatchFiles").mkdir(parents=True)
+    monkeypatch.delenv("ProgramFiles", raising=False)
+    monkeypatch.delenv("ProgramFiles(x86)", raising=False)
+    monkeypatch.setattr(Path, "home", lambda: tmp_path / "home")
+    assert _REAL_PROGRAM_FILES_LOOKUP("5.8") == str(engine)
+
+
+@pytest.mark.parametrize("platform", ["Mac", "Linux"])
+def test_posix_commands_have_no_windows_artifacts(tmp_path: Path, platform: str):
+    engine = Path("/ue")
+    cmds = [
+        ue.build_plugin_command(engine, platform),
+        ue.build_editor_command(engine, platform, tmp_path),
+        ue.automation_test_command(engine, platform, tmp_path),
+    ]
+    for cmd in cmds:
+        assert not cmd[0].endswith((".bat", ".exe")), cmd[0]
+    assert ue.build_plugin_command(engine, platform)[0].endswith("RunUAT.sh")
+    assert ue.build_editor_command(engine, platform, tmp_path)[0].endswith(f"{platform}/Build.sh".replace("/", os.sep))
+
+
+def test_main_posix_runs_argv_list_not_a_command_line(no_engine_env, tmp_path: Path):
+    engine = _fake_engine(tmp_path, "Mac")
+    no_engine_env.setattr(ue, "host_platform", lambda: "Mac")
+    calls: list = []
+    no_engine_env.setattr(ue.subprocess, "run", _fake_run(calls, [0]))
+    assert ue.main(["build-plugin", "--engine", str(engine), "--report-dir", str(tmp_path / "r")]) == 0
+    assert isinstance(calls[0][0], list)

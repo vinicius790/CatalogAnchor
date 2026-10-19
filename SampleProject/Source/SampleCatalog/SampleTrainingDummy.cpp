@@ -11,6 +11,8 @@ ASampleTrainingDummy::ASampleTrainingDummy()
 {
 	PrimaryActorTick.bCanEverTick = false;
 	bReplicates = true;
+	// Só a vida muda, e em rajadas curtas: 20 Hz basta para a barra sobre o boneco.
+	SetNetUpdateFrequency(20.f);
 
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> CylinderMesh(TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
 

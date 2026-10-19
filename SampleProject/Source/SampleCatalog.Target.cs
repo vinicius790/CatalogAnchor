@@ -1,3 +1,4 @@
+// Copyright 2026 Geraliza Castlevania. MIT License.
 using UnrealBuildTool;
 using System.Collections.Generic;
 

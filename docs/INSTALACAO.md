@@ -5,6 +5,8 @@ Visual Studio 2022 17.14 (MSVC 14.44) ou 2026 (MSVC 14.50) com o workload *Game 
 Windows SDK ≥ 10.0.19041 (Windows), ou o toolchain equivalente no Linux/macOS (não verificado). Sem eles o
 UBT falha com "Platform Win64 is not a valid platform to build".
 
+Depois de instalar, siga o [QUICKSTART.md](QUICKSTART.md) (baú interativo + save em 10 passos) e consulte [API.md](API.md).
+
 ## Caminho A — usar o plugin no seu projeto
 
 1. Copie `Plugins/CatalogAnchor/` para `SeuProjeto/Plugins/CatalogAnchor/`.
@@ -44,7 +46,7 @@ Roda `RunUAT BuildPlugin` e compila Runtime + Editor num projeto temporário; a 
 py -3 tools/ue.py test
 ```
 
-Compila o `SampleCatalogEditor` e roda os 73 testes de automação `CatalogAnchor.*` no editor headless
+Compila o `SampleCatalogEditor` e roda os 76 testes de automação `CatalogAnchor.*` no editor headless
 (`-nullrhi`). Logs e relatório (`index.json`) vão para `--report-dir` (default `Saved/Reports`); sai ≠ 0 se
 algum teste falhar ou se nenhum teste rodar.
 
@@ -58,7 +60,7 @@ Compile a partir de um caminho ASCII.
 
 - [ ] Output Log: `LogCatalogAnchor: CatalogAnchor Runtime online`
 - [ ] Project Settings → Plugins → **Catalog Anchor** mostra Interaction / Save / Inventory / Ability
-- [ ] Session Frontend → Automation → `CatalogAnchor` → 73 testes verdes (com o PIE parado)
+- [ ] Session Frontend → Automation → `CatalogAnchor` → 76 testes verdes (com o PIE parado)
 - [ ] Sample: pegar pickups, abrir o baú segurando E, pegar a chave e abrir o baú trancado
 - [ ] Sample: F5 → fechar o PIE → Play → F9 restaura inventário, posição e vida
 - [ ] Sample: Tab abre o menu de saves (salvar/carregar/apagar com metadados)

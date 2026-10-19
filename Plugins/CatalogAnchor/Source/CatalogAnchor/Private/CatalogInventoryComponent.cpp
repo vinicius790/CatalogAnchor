@@ -200,7 +200,8 @@ int32 UCatalogInventoryComponent::SimulateAdd(const UCatalogItemDefinition* Item
 {
 	CollectStacks(Item, OutEntryIndices, OutStacks);
 
-	const int32 Allowed = bEnforceWeight
+	// Sem MaxWeight (padrão) pula a soma O(pilhas) do peso.
+	const int32 Allowed = bEnforceWeight && MaxWeight > 0.f
 		? FCatalogInventoryRules::MaxQuantityByWeight(GetTotalWeight(), MaxWeight, Item->Weight, Quantity)
 		: Quantity;
 	const int32 FreeSlots = FMath::Max(0, Capacity - InventoryList.Entries.Num());

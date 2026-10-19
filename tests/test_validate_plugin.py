@@ -25,6 +25,7 @@ def clean_root(tmp_path: Path) -> Path:
         "FileVersion": 3,
         "Version": 1,
         "VersionName": "0.1.0",
+        "SupportedTargetPlatforms": ["Win64", "Mac", "Linux"],
         "Modules": [
             {"Name": "CatalogAnchor", "Type": "Runtime", "LoadingPhase": "Default"},
             {"Name": "CatalogAnchorEditor", "Type": "Editor", "LoadingPhase": "Default"},
@@ -413,3 +414,69 @@ def test_30_non_utf8_build_cs_and_docs_do_not_crash(clean_root: Path):
     doc = clean_root / "docs" / "TECNOLOGIAS.md"
     doc.write_bytes(doc.read_bytes() + b"\nacentua\xe7\xe3o\n")
     assert vp.run_validation(clean_root).ok()
+
+
+
+@pytest.mark.parametrize(
+    ("platforms", "ok"),
+    [(["Win64", "Mac", "Linux"], True), (["Win64", "Linux", "Android"], False), ([], False), (None, False)],
+)
+def test_26_uplugin_must_declare_all_desktop_platforms(clean_root: Path, platforms, ok: bool):
+    def mutate(d):
+        d.pop("SupportedTargetPlatforms")
+        if platforms is not None:
+            d["SupportedTargetPlatforms"] = platforms
+
+    _edit_json(_uplugin(clean_root), mutate)
+    result = vp.run_validation(clean_root)
+    assert result.ok() is ok, result.errors
+    assert ok or any("SupportedTargetPlatforms" in e for e in result.errors)
+
+
+def test_27_include_case_mismatch_is_error_but_exact_and_engine_are_fine(clean_root: Path):
+    _cpp(clean_root, "Public/CatalogItem.h", "struct FItem {};\n")
+    _cpp(clean_root, "Private/Ok.cpp", '#include "CatalogItem.h"\n#include "CoreMinimal.h"\n#include "Misc/Guid.h"\n')
+    assert vp.run_validation(clean_root).ok()
+    bad = _cpp(clean_root, "Private/Bad.cpp", '#include "catalogitem.h"\n')
+    result = vp.run_validation(clean_root)
+    assert any(e.startswith(f"{bad}:2:") and "caixa" in e for e in result.errors), result.errors
+    assert not any("Ok.cpp" in e for e in result.errors)
+
+
+def test_28_include_case_checks_subfolder_and_parent_paths(clean_root: Path):
+    _cpp(clean_root, "Public/Sub/Thing.h", "struct FThing {};\n")
+    bad = _cpp(clean_root, "Private/Bad.cpp", '#include "sub/Thing.h"\n#include "../Public/Sub/thing.h"\n')
+    result = vp.run_validation(clean_root)
+    assert sum(e.startswith(bad) for e in result.errors) == 2, result.errors
+
+
+def test_29_windows_only_code_inside_platform_guard_is_fine(clean_root: Path):
+    body = (
+        "#if PLATFORM_WINDOWS\n#include <windows.h>\nint A = _WIN32;\n#else\nint B = 0;\n#endif\n"
+        "#if defined(_WIN32)\n__declspec(dllexport) int C;\n#endif\n"
+    )
+    _cpp(clean_root, "Private/Guarded.cpp", body)
+    assert vp.run_validation(clean_root).ok()
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        '#include "Windows/WindowsHWrapper.h"',
+        "#include <Windows.h>",
+        "#if !PLATFORM_WINDOWS && _WIN32",
+        "__declspec(dllexport) int X;",
+        "#if _MSC_VER > 1900",
+        'FString P = TEXT("Saved' + chr(92) * 2 + 'Slots");',
+    ],
+)
+def test_30_windows_only_outside_guard_is_error(clean_root: Path, line: str):
+    rel = _cpp(clean_root, "Private/Win.cpp", line + "\n")
+    result = vp.run_validation(clean_root)
+    assert any(e.startswith(f"{rel}:2:") and "Windows" in e for e in result.errors), result.errors
+
+
+def test_31_else_branch_of_windows_guard_is_not_windows(clean_root: Path):
+    rel = _cpp(clean_root, "Private/Else.cpp", "#if PLATFORM_WINDOWS\nint A;\n#else\nint B = _MSC_VER;\n#endif\n")
+    result = vp.run_validation(clean_root)
+    assert [e.split(":")[1] for e in result.errors if e.startswith(rel)] == ["5"], result.errors

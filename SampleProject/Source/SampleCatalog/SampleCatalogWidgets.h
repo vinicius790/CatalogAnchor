@@ -14,7 +14,8 @@ class UWidget;
 /**
  * HUD em UMG montado em código (sem Widget Blueprint): vida, prompt + barra de hold da interação,
  * inventário, cooldowns, avisos e ajuda de teclas. Lê a API pública dos componentes do pawn a cada
- * frame (cooldown muda continuamente; o resto é barato). Não recebe clique: HitTestInvisible.
+ * frame, mas só reaplica texto/cor/percentual de um widget quando o valor exibido mudou (SetText por
+ * frame formata, aloca e invalida o layout). Não recebe clique: HitTestInvisible.
  */
 UCLASS()
 class USampleHUDWidget : public UUserWidget
@@ -57,6 +58,20 @@ private:
 
 	/** Em tempo real (s): o aviso some mesmo com o jogo pausado. */
 	double MessageHideTime = 0.0;
+
+	// Último valor aplicado a cada widget (ver NativeTick): -1 = ainda não aplicado.
+	int32 ShownHealth = -1;
+	int32 ShownMaxHealth = -1;
+	bool bShownLowHealth = false;
+	float ShownHealthPercent = -1.f;
+	bool bInventoryKeyValid = false;
+	uint32 InventoryKey = 0;
+	/** Por habilidade: 0 = pronta, senão décimos de segundo restantes + 1 (o que o texto exibe). */
+	TArray<int32> AbilityKeys;
+	FText ShownPrompt;
+	int32 ShownInteracting = -1;
+	float ShownInteractPercent = -1.f;
+	bool bMessageShown = false;
 };
 
 /**

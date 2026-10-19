@@ -14,9 +14,13 @@
   automação usam um `UWorld` próprio, sem conexão de rede.
 - **Foco/highlight real** só é verificável no PIE (precisa de `PlayerController` local com câmera): a automação
   cobre o trace (`ComputeTraceSegment`, `FindOwningController`), não o highlight na tela.
+- A referência de API ([docs/API.md](docs/API.md)) é gerada dos headers (`tools/gen_api_docs.py`); a conferência é textual,
+  sem compilar.
 - As assinaturas de API mais arriscadas foram conferidas lendo os headers da 5.8.3
   ([docs/TECNOLOGIAS.md](docs/TECNOLOGIAS.md)).
-- **Mac e Linux** não verificados (nem o tooling de build `tools/ue.py` nessas plataformas com engine real).
+- **Windows, além do Editor:** build **Shipping** e empacotamento também passaram na UE 5.8.3.
+- **Mac e Linux** não verificados: o código foi revisado para clang e o CI foi preparado, mas nada foi compilado nem executado
+  nessas plataformas nesta máquina (nem o tooling `tools/ue.py` com engine real). Ver [docs/PLATFORMS.md](docs/PLATFORMS.md).
 - Compatibilidade com 5.9 e 6.0 é intenção (`.uplugin` sem `EngineVersion`), não fato.
 
 ## Riscos conhecidos
@@ -35,8 +39,8 @@
 
 ## Não entregue / não inventado
 
-- Nenhum cooked game, `.pak`, shipping build ou trailer.
-- Nenhum número de FPS nem benchmark.
+- Nenhum jogo cozinhado publicado (sem `.pak` no repositório; o empacotamento foi só verificado localmente) e nenhum trailer.
+- Nenhum número de FPS nem benchmark publicado.
 - Sem `Binaries/`, `Intermediate/`, `DerivedDataCache/`, `Saved/` versionados.
 - Sem malha de personagem, animações, materiais ou mapas (`.uasset`/`.umap`).
 

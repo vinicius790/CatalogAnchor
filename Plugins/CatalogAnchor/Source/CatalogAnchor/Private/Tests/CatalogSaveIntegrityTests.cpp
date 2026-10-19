@@ -203,6 +203,16 @@ bool FCatalogSavePayloadCrcTest::RunTest(const FString& Parameters)
 	OtherCase.Inventory[0].ItemId = TEXT("POTION");
 	OtherCase.Records[0].Key = TEXT("inventory");
 	TestEqual(TEXT("FName sem diferenciar caixa"), CatalogComputePayloadCrc(OtherCase), BaseCrc);
+
+	// Nome além do buffer na pilha (128 TCHAR) cai no heap e segue sem diferenciar caixa.
+	FCatalogSavePayload LongLower = Base;
+	LongLower.Records[0].Key = FName(*FString::ChrN(300, TEXT('a')));
+	FCatalogSavePayload LongUpper = Base;
+	LongUpper.Records[0].Key = FName(*FString::ChrN(300, TEXT('A')));
+	FCatalogSavePayload LongOther = Base;
+	LongOther.Records[0].Key = FName(*(FString::ChrN(299, TEXT('a')) + TEXT("b")));
+	TestEqual(TEXT("FName longo sem diferenciar caixa"), CatalogComputePayloadCrc(LongUpper), CatalogComputePayloadCrc(LongLower));
+	TestTrue(TEXT("FName longo diferente muda o CRC"), CatalogComputePayloadCrc(LongOther) != CatalogComputePayloadCrc(LongLower));
 	return true;
 }
 

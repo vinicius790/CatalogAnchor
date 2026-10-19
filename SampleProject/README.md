@@ -34,6 +34,13 @@ marcador do alvo e barras de vida sobre os bonecos.
 | F5 / F9 | salvar / carregar o slot `Quick` (só no host) |
 | **Tab** | abre o menu de saves; Tab ou Esc fecham (no PIE, Esc também para a sessão: prefira Tab) |
 
+Gamepad (layout Xbox; outros controles usam os botões equivalentes): stick esquerdo move, stick direito olha,
+A pula, X (segurar) interage, RB dash, RT golpe, Y poção, D-pad baixo solta item, D-pad esquerda/direita
+salva/carrega, Menu abre o menu de saves (Menu ou B fecham).
+
+Plataformas: Windows, Mac (Metal) e Linux (Vulkan); `Config/DefaultEngine.ini` define o RHI por plataforma e a
+escala de UI por DPI (menor lateral), sem tamanho de tela fixo.
+
 ## Menu de saves
 
 - Lista sempre `Quick`, `Slot1`, `Slot2`, `Slot3` e, além deles, todo `.sav` do disco que o

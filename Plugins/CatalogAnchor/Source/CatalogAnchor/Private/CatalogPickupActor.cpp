@@ -41,6 +41,9 @@ ACatalogPickupActor::ACatalogPickupActor()
 {
 	PrimaryActorTick.bCanEverTick = false;
 	bReplicates = true;
+	// Pickup parado: replica o estado inicial (Item/Quantity) e dorme; OnInteract acorda ao mudar Quantity.
+	NetDormancy = DORM_Initial;
+	SetNetUpdateFrequency(2.f);
 
 	Mesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Mesh"));
 	SetRootComponent(Mesh);
@@ -95,6 +98,10 @@ bool ACatalogPickupActor::OnInteract_Implementation(AActor* InstigatorActor)
 	if (Quantity <= 0)
 	{
 		Destroy();
+	}
+	else
+	{
+		FlushNetDormancy(); // coleta parcial: os clientes precisam do novo Quantity (prompt)
 	}
 	return true;
 }

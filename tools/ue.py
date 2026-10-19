@@ -3,7 +3,8 @@ r"""Comandos que exigem Unreal Engine 5.8+ instalada: empacotar o plugin e rodar
 
 Engine: --engine <pasta> > env UE_ROOT > registro Windows (HKLM\SOFTWARE\EpicGames\Unreal Engine\<--version>,
 default 5.8) > %ProgramData%\Epic\UnrealEngineLauncher\LauncherInstalled.dat (AppName "UE_<--version>")
-> %ProgramFiles%\Epic Games\UE_<--version> (e %ProgramFiles(x86)%), onde o Launcher instala por padrão.
+> pastas padrão: Win %ProgramFiles%\Epic Games\UE_<--version>; Mac /Users/Shared/Epic Games; Linux ~/UnrealEngine.
+No Mac/Linux use --engine ou UE_ROOT (docs/PLATFORMS.md).
 A pasta é a raiz da instalação (a que contém Engine/), ex.: "C:/Program Files/Epic Games/UE_5.8".
 
 UE_SDKS_ROOT (opcional): se estiver no ambiente, o UBT/UAT herda e usa <UE_SDKS_ROOT>/HostWin64/Win64/VS2022 como
@@ -47,8 +48,9 @@ SDK_HINTS = {
     "Win64": "rode `py -3 tools/get_msvc.py` e defina UE_SDKS_ROOT=<destino> (MSVC 14.44 + Windows SDK 22621 "
     "portáteis, sem instalar nada), ou instale o Visual Studio 2022 17.14 / Build Tools com a carga "
     "'Desenvolvimento para desktop com C++'; requisitos em Engine/Config/Windows/Windows_SDK.json",
-    "Mac": "instale o Xcode exigido em Engine/Config/Apple/Apple_SDK.json",
-    "Linux": "instale o toolchain clang cross/nativo que a Epic indica para a UE 5.8",
+    "Mac": "instale o Xcode 15.2 a 27.x (Engine/Config/Apple/Apple_SDK.json) e aponte `xcode-select -s` para ele",
+    "Linux": "instale o clang do Linux_SDK.json (v26_clang-20.1.8 na UE 5.8) e rode Setup.sh da engine; "
+    "veja docs/PLATFORMS.md",
 }
 
 
@@ -77,8 +79,14 @@ def registry_engine_dir(version: str = ENGINE_VERSION) -> str | None:
 def launcher_engine_dir(version: str = ENGINE_VERSION, dat: Path | None = None) -> str | None:
     """InstallLocation de "UE_<versão>" no LauncherInstalled.dat (instalações do Launcher que não vão ao registro)."""
     if dat is None:
-        program_data = Path(os.environ.get("ProgramData", r"C:\ProgramData"))
-        dat = program_data / "Epic" / "UnrealEngineLauncher" / "LauncherInstalled.dat"
+        system = host_platform()
+        if system == "Win64":
+            base = Path(os.environ.get("ProgramData", r"C:\ProgramData")) / "Epic"
+        elif system == "Mac":
+            base = Path("/Users/Shared/Epic")
+        else:
+            base = Path.home() / ".config" / "Epic"
+        dat = base / "UnrealEngineLauncher" / "LauncherInstalled.dat"
     try:
         installs = json.loads(dat.read_text(encoding="utf-8-sig")).get("InstallationList", [])
     except (OSError, ValueError, AttributeError):
@@ -90,11 +98,19 @@ def launcher_engine_dir(version: str = ENGINE_VERSION, dat: Path | None = None) 
 
 
 def program_files_engine_dir(version: str = ENGINE_VERSION) -> str | None:
-    """Último recurso: o Launcher instala em <ProgramFiles>/Epic Games/UE_<versão> mesmo sem registro nem .dat."""
-    for var in ("ProgramFiles", "ProgramFiles(x86)"):
-        base = os.environ.get(var)
-        candidate = Path(base) / "Epic Games" / f"UE_{version}" if base else None
-        if candidate and (candidate / "Engine" / "Build" / "BatchFiles").is_dir():
+    """Último recurso: pastas padrão (Win: Program Files do Launcher; Mac: /Users/Shared; Linux: ~/UnrealEngine)."""
+    candidates = [
+        Path(base) / "Epic Games" / f"UE_{version}"
+        for base in (os.environ.get(v) for v in ("ProgramFiles", "ProgramFiles(x86)"))
+        if base
+    ]
+    candidates += [
+        Path("/Users/Shared/Epic Games") / f"UE_{version}",
+        Path.home() / "UnrealEngine" / f"UE_{version}",
+        Path.home() / "UnrealEngine",
+    ]
+    for candidate in candidates:
+        if (candidate / "Engine" / "Build" / "BatchFiles").is_dir():
             return str(candidate)
     return None
 
@@ -128,7 +144,7 @@ def build_script_path(engine: Path, platform: str) -> Path:
 def editor_cmd_path(engine: Path, platform: str) -> Path:
     """Mesmo executável que o UAT usa (CommandletUtils.GetEditorCommandletExe, UE 5.8).
 
-    Mac: o bundle .app (não há garantia de UnrealEditor-Cmd no Mac). Mac e Linux não verificados em máquina real.
+    Mac: o bundle .app (sem UnrealEditor-Cmd); Linux: UnrealEditor. Mac e Linux não verificados em máquina real.
     """
     binaries = engine / "Engine" / "Binaries" / platform
     if platform == "Win64":

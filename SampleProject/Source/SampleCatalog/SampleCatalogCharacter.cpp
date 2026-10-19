@@ -49,6 +49,16 @@ namespace SampleCharacterPrivate
 		return Action;
 	}
 
+	/** Negar só o Y: mouse/stick para cima = olhar para cima. */
+	UInputModifierNegate* NewNegateY(UObject* Outer)
+	{
+		UInputModifierNegate* Negate = NewObject<UInputModifierNegate>(Outer);
+		Negate->bX = false;
+		Negate->bY = true;
+		Negate->bZ = false;
+		return Negate;
+	}
+
 	/** Subsystem de input do LocalPlayer, só se o controller for um PlayerController local. */
 	UEnhancedInputLocalPlayerSubsystem* GetLocalInputSubsystem(const AController* Controller)
 	{
@@ -162,13 +172,18 @@ void ASampleCatalogCharacter::EnsureInputObjects()
 	MapMove(EKeys::D, false, false);
 	MapMove(EKeys::A, false, true);
 
-	// Mouse para cima = olhar para cima: nega só o Y.
-	FEnhancedActionKeyMapping& LookMapping = MappingContext->MapKey(LookAction, EKeys::Mouse2D);
-	UInputModifierNegate* NegateY = NewObject<UInputModifierNegate>(MappingContext);
-	NegateY->bX = false;
-	NegateY->bY = true;
-	NegateY->bZ = false;
-	LookMapping.Modifiers.Add(NegateY);
+	// Gamepad: stick esquerdo move (já vem X = lado, Y = frente), direito olha. Zona morta radial em ambos.
+	MappingContext->MapKey(MoveAction, EKeys::Gamepad_Left2D).Modifiers.Add(NewObject<UInputModifierDeadZone>(MappingContext));
+
+	// Mouse2D já é um delta por frame; o stick é uma taxa: escala por segundo * delta time (~150 graus/s no fundo do curso).
+	MappingContext->MapKey(LookAction, EKeys::Mouse2D).Modifiers.Add(NewNegateY(MappingContext));
+	FEnhancedActionKeyMapping& StickLook = MappingContext->MapKey(LookAction, EKeys::Gamepad_Right2D);
+	StickLook.Modifiers.Add(NewObject<UInputModifierDeadZone>(MappingContext));
+	StickLook.Modifiers.Add(NewNegateY(MappingContext));
+	UInputModifierScalar* StickScale = NewObject<UInputModifierScalar>(MappingContext);
+	StickScale->Scalar = FVector(60.f, 60.f, 1.f);
+	StickLook.Modifiers.Add(StickScale);
+	StickLook.Modifiers.Add(NewObject<UInputModifierScaleByDeltaTime>(MappingContext));
 
 	MappingContext->MapKey(JumpAction, EKeys::SpaceBar);
 	MappingContext->MapKey(InteractAction, EKeys::E);
@@ -180,6 +195,17 @@ void ASampleCatalogCharacter::EnsureInputObjects()
 	MappingContext->MapKey(LoadAction, EKeys::F9);
 	// Só abre: com o menu aberto o input é UI-only e o próprio menu fecha no Tab/Esc.
 	MappingContext->MapKey(SaveMenuAction, EKeys::Tab);
+
+	// Gamepad (layout Xbox; no PlayStation/Switch o UE troca pelos botões equivalentes).
+	MappingContext->MapKey(JumpAction, EKeys::Gamepad_FaceButton_Bottom);
+	MappingContext->MapKey(InteractAction, EKeys::Gamepad_FaceButton_Left);
+	MappingContext->MapKey(DashAction, EKeys::Gamepad_RightShoulder);
+	MappingContext->MapKey(MeleeAction, EKeys::Gamepad_RightTrigger);
+	MappingContext->MapKey(UseAction, EKeys::Gamepad_FaceButton_Top);
+	MappingContext->MapKey(DropAction, EKeys::Gamepad_DPad_Down);
+	MappingContext->MapKey(SaveAction, EKeys::Gamepad_DPad_Left);
+	MappingContext->MapKey(LoadAction, EKeys::Gamepad_DPad_Right);
+	MappingContext->MapKey(SaveMenuAction, EKeys::Gamepad_Special_Right);
 }
 
 void ASampleCatalogCharacter::NotifyControllerChanged()

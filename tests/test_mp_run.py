@@ -5,6 +5,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tools"))
 
 import mp_run  # noqa: E402
@@ -90,3 +92,64 @@ def test_health_and_num_helpers():
     assert mp_run.hp(rec) == 100.0 and mp_run.hp(None) == -1.0 and mp_run.num(rec, "Nada") == -1.0
     assert mp_run.local([rec], "x") is None  # rótulo diferente
     assert mp_run.local([rec], "focus") is rec
+
+
+class _Proc:
+    def __init__(self, pid: int = 4242):
+        self.pid, self.killed, self.waited = pid, False, False
+
+    def kill(self):
+        self.killed = True
+
+    def wait(self, timeout=None):
+        self.waited = True
+
+
+@pytest.mark.parametrize(("platform", "windows"), [("Win64", True), ("Mac", False), ("Linux", False)])
+def test_spawn_uses_command_line_on_windows_and_argv_session_on_posix(monkeypatch, platform: str, windows: bool):
+    seen = {}
+    monkeypatch.setattr(mp_run.subprocess, "Popen", lambda cmd, **kw: seen.update(cmd=cmd, kw=kw))
+    mp_run.spawn(["/ue/UnrealEditor", "-ExecCmds=a b"], platform)
+    assert isinstance(seen["cmd"], str) is windows
+    assert ("start_new_session" in seen["kw"]) is (not windows)
+
+
+def test_kill_windows_terminates_own_processes_without_taskkill(monkeypatch):
+    runs: list = []
+    monkeypatch.setattr(mp_run.subprocess, "run", lambda cmd, **kw: runs.append(cmd))
+    p = _Proc()
+    mp_run.kill([p], platform="Win64")
+    assert p.killed and p.waited and not runs
+
+
+@pytest.mark.parametrize("platform", ["Mac", "Linux"])
+def test_kill_posix_kills_process_group_and_pkill_only_with_kill_all(monkeypatch, platform: str):
+    runs, groups = [], []
+    monkeypatch.setattr(mp_run.subprocess, "run", lambda cmd, **kw: runs.append(cmd))
+    monkeypatch.setattr(mp_run.signal, "SIGKILL", 9, raising=False)  # Windows não tem SIGKILL
+    monkeypatch.setattr(mp_run.os, "getpgid", lambda pid: pid + 1, raising=False)
+    monkeypatch.setattr(mp_run.os, "killpg", lambda pg, sig: groups.append((pg, sig)), raising=False)
+    p = _Proc(100)
+    mp_run.kill([p], platform=platform)
+    assert groups == [(101, 9)] and not runs and p.waited
+    mp_run.kill([p], kill_all=True, platform=platform)
+    assert runs == [["pkill", "-KILL", "-x", "UnrealEditor"]]
+
+
+def test_kill_kill_all_on_windows_uses_image_name(monkeypatch):
+    runs: list = []
+    monkeypatch.setattr(mp_run.subprocess, "run", lambda cmd, **kw: runs.append(cmd))
+    mp_run.kill([], kill_all=True, platform="Win64")
+    assert runs == [["taskkill", "/F", "/IM", "UnrealEditor-Cmd.exe"]]
+
+
+def test_kill_posix_ignores_already_dead_process(monkeypatch):
+    def gone(pid):
+        raise ProcessLookupError
+
+    monkeypatch.setattr(mp_run.os, "getpgid", gone, raising=False)
+    monkeypatch.setattr(mp_run.os, "killpg", lambda pg, sig: None, raising=False)
+    monkeypatch.setattr(mp_run.signal, "SIGKILL", 9, raising=False)
+    p = _Proc()
+    mp_run.kill([p], platform="Linux")
+    assert p.waited

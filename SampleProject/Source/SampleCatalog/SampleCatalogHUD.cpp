@@ -6,6 +6,7 @@
 #include "CatalogSaveSubsystem.h"
 #include "Engine/Canvas.h"
 #include "Engine/GameInstance.h"
+#include "Engine/UserInterfaceSettings.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "GameFramework/Pawn.h"
@@ -148,11 +149,16 @@ void ASampleCatalogHUD::DrawHUD()
 		return;
 	}
 
+	// Tamanhos em px de design (1080p): escalam com a mesma curva de DPI do UMG (tela pequena, 4K, Retina).
+	const float UIScale = GetDefault<UUserInterfaceSettings>()->GetDPIScaleBasedOnSize(
+		FIntPoint(FMath::RoundToInt(Canvas->ClipX), FMath::RoundToInt(Canvas->ClipY)));
+
 	// Mira: o trace de interação mira o centro da tela.
 	const float CenterX = Canvas->ClipX * 0.5f;
 	const float CenterY = Canvas->ClipY * 0.5f;
-	DrawLine(CenterX - 8.f, CenterY, CenterX + 8.f, CenterY, TextColor, 2.f);
-	DrawLine(CenterX, CenterY - 8.f, CenterX, CenterY + 8.f, TextColor, 2.f);
+	const float CrossHalf = 8.f * UIScale;
+	DrawLine(CenterX - CrossHalf, CenterY, CenterX + CrossHalf, CenterY, TextColor, 2.f * UIScale);
+	DrawLine(CenterX, CenterY - CrossHalf, CenterX, CenterY + CrossHalf, TextColor, 2.f * UIScale);
 
 	// Barra de vida sobre cada boneco visível (Health replica para todos). Fica no Canvas: é posição de mundo projetada.
 	for (TActorIterator<ASampleTrainingDummy> It(GetWorld()); It; ++It)
@@ -165,10 +171,11 @@ void ASampleCatalogHUD::DrawHUD()
 		const FVector Screen = Project(It->GetActorLocation() + FVector(0.f, 0.f, 110.f));
 		if (Screen.Z > 0.0)
 		{
-			constexpr float BarWidth = 60.f;
+			const float BarWidth = 60.f * UIScale;
+			const float BarHeight = 6.f * UIScale;
 			const float X = static_cast<float>(Screen.X) - BarWidth * 0.5f;
-			DrawRect(FLinearColor(0.f, 0.f, 0.f, 0.6f), X, static_cast<float>(Screen.Y), BarWidth, 6.f);
-			DrawRect(FLinearColor(0.9f, 0.2f, 0.2f), X, static_cast<float>(Screen.Y), BarWidth * DummyHealth->GetHealthFraction(), 6.f);
+			DrawRect(FLinearColor(0.f, 0.f, 0.f, 0.6f), X, static_cast<float>(Screen.Y), BarWidth, BarHeight);
+			DrawRect(FLinearColor(0.9f, 0.2f, 0.2f), X, static_cast<float>(Screen.Y), BarWidth * DummyHealth->GetHealthFraction(), BarHeight);
 		}
 	}
 
@@ -183,7 +190,8 @@ void ASampleCatalogHUD::DrawHUD()
 		const FVector Screen = Project(Origin + FVector(0.f, 0.f, Extent.Z + 20.f));
 		if (Screen.Z > 0.0)
 		{
-			DrawRect(AccentColor, static_cast<float>(Screen.X) - 6.f, static_cast<float>(Screen.Y) - 6.f, 12.f, 12.f);
+			const float Marker = 12.f * UIScale;
+			DrawRect(AccentColor, static_cast<float>(Screen.X) - Marker * 0.5f, static_cast<float>(Screen.Y) - Marker * 0.5f, Marker, Marker);
 		}
 	}
 }

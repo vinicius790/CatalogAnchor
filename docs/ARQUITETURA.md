@@ -2,6 +2,7 @@
 
 Princípio de todos os sistemas: **o servidor decide, o cliente pede e lê o estado replicado.**
 Nenhum cliente executa gameplay localmente nem escolhe alvo, item ou habilidade por conta própria.
+Assinaturas e propriedades de cada tipo: [API.md](API.md) (gerada dos headers); primeiros passos: [QUICKSTART.md](QUICKSTART.md).
 
 ## Módulos
 

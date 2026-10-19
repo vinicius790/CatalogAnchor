@@ -11,6 +11,8 @@
 #include "Engine/World.h"
 #include "Net/UnrealNetwork.h"
 #include "CollisionQueryParams.h"
+#include "CollisionShape.h"
+#include "Engine/HitResult.h"
 #include "DrawDebugHelpers.h"
 #include "HAL/IConsoleManager.h"
 
@@ -76,10 +78,32 @@ void UCatalogInteractionComponent::TickComponent(float DeltaTime, ELevelTick Tic
 	const AActor* Owner = GetOwner();
 	if (Owner && Owner->HasAuthority())
 	{
-		// Durante o hold o trace roda mesmo sem bAutoTrace: desviar o olhar precisa cancelar.
-		if (bAutoTrace || IsInteracting())
+		// Durante o hold o trace roda todo tick, mesmo sem bAutoTrace: desviar o olhar precisa cancelar.
+		if (IsInteracting())
 		{
 			RefreshTarget();
+		}
+		else if (bAutoTrace)
+		{
+			AutoTraceCountdown -= DeltaTime;
+			if (AutoTraceCountdown <= 0.f)
+			{
+				AutoTraceCountdown = FMath::Max(0.f, TraceIntervalSeconds);
+				const APawn* OwnerPawn = Cast<APawn>(Owner);
+				if (OwnerPawn && !OwnerPawn->GetController())
+				{
+					// Pawn sem possessão (morte, veículo) não mira: limpa o alvo em vez de traçar do corpo.
+					if (CurrentTarget.IsValid())
+					{
+						CurrentTarget.Reset();
+						SyncFocus();
+					}
+				}
+				else
+				{
+					RefreshTarget();
+				}
+			}
 		}
 		if (IsInteracting())
 		{

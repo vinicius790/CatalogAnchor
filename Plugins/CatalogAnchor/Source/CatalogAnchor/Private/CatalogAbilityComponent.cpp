@@ -18,6 +18,8 @@ namespace CatalogAbilityFailure
 
 UCatalogAbilityComponent::UCatalogAbilityComponent()
 {
+	// Cooldown é calculado sob demanda (relógio do servidor): não precisa de tick.
+	PrimaryComponentTick.bCanEverTick = false;
 	SetIsReplicatedByDefault(true);
 }
 

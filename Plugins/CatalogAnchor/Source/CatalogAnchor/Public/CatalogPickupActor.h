@@ -14,6 +14,8 @@ class UStaticMeshComponent;
  * (no Pawn ou no Controller dele); some quando tudo entrou, senão fica com o resto.
  * A malha bloqueia só Visibility (canal padrão do trace de interação): pawns atravessam.
  * Highlight de foco usa Custom Depth: habilite-o no projeto e use um post-process.
+ * Dorme na rede (DORM_Initial) depois da replicação inicial: se mudar Item/Quantity em runtime fora de
+ * OnInteract, chame FlushNetDormancy() para os clientes receberem.
  */
 UCLASS()
 class CATALOGANCHOR_API ACatalogPickupActor : public AActor, public ICatalogInteractable

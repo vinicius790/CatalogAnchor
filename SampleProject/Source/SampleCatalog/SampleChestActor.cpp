@@ -16,6 +16,8 @@ ASampleChestActor::ASampleChestActor()
 {
 	PrimaryActorTick.bCanEverTick = false;
 	bReplicates = true;
+	// Muda só ao abrir/trancar.
+	SetNetUpdateFrequency(10.f);
 
 	// Root próprio: a escala das malhas fica nelas, longe da escala do spawn.
 	SetRootComponent(CreateDefaultSubobject<USceneComponent>(TEXT("Root")));

@@ -1,4 +1,4 @@
-# Gate host-side: lint Python, validador (manifestos + estilo C++) e pytest com relatório JUnit.
+# Gate host-side (Ubuntu, macOS e Windows): lint Python, validador (manifestos + C++ portável) e pytest com JUnit.
 # Compilar o C++ e rodar os testes de automação exige Unreal Engine: ver ue.yml (runner self-hosted).
 name: CI
 
@@ -23,13 +23,22 @@ jobs:
       - run: ruff check --output-format=github .
 
   validate:
-    runs-on: ubuntu-latest
+    name: validate (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - run: python tools/validate_plugin.py
+      - name: Docs de API em dia
+        shell: bash
+        run: |
+          if [ -f tools/gen_api_docs.py ]; then python tools/gen_api_docs.py --check; else echo "gen_api_docs.py ausente: pulado"; fi
 
   test:
     name: test (${{ matrix.os }}, py${{ matrix.python-version }})
@@ -37,14 +46,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
         # pytest==8.3.4 declara Requires-Python >=3.8 sem teto e roda em 3.14.
         python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
-        include:
-          - os: windows-latest
-            python-version: "3.12"
-          - os: windows-latest
-            python-version: "3.14"
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6

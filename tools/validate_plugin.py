@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import ast
 import json
+import posixpath
 import re
 import subprocess
 import sys
@@ -53,6 +54,15 @@ DOC_AUTOMATION_COUNT_RE = re.compile(r"(\d+)\s+testes\s+(?:C\+\+|de automação|
 DOC_PYTEST_COUNT_RE = re.compile(r"(\d+)\s+casos\s+de\s+pytest|pytest\s*\(\s*(\d+)\s+casos\s*\)")
 UFUNCTION_RE = re.compile(r"\bUFUNCTION\s*\(")
 FUNCTION_NAME_RE = re.compile(r"(\w+)\s*\(")
+REQUIRED_PLATFORMS = ("Win64", "Mac", "Linux")
+QUOTED_INCLUDE_RE = re.compile(r'^\s*#\s*include\s*"([^"\n]+)"')
+DIRECTIVE_RE = re.compile(r"^\s*#\s*(ifdef|ifndef|if|elif|else|endif)\b(.*)$")
+WIN_GUARD_RE = re.compile(r"PLATFORM_WINDOWS|\b_WIN32\b")
+# Só-Windows: windows.h, Windows/..., _WIN32, __declspec, _MSC_VER e "\\" dentro de literal de string.
+WIN_ONLY_RE = re.compile(
+    r'windows\.h|(?<![\w])Windows/|\b_WIN32\b|__declspec|\b_MSC_VER\b|"(?:[^"\\\n]|\\.)*\\\\(?:[^"\\\n]|\\.)*"',
+    re.IGNORECASE,
+)
 UTF8_BOM = b"\xef\xbb\xbf"
 # Sem BOM o MSVC pode ler o fonte na codepage do Windows e corromper acentos em TEXT()/LOCTEXT.
 NON_ASCII_WITHOUT_BOM = "arquivo com caractere não-ASCII precisa começar com BOM UTF-8"
@@ -143,6 +153,10 @@ def validate_uplugin(data: dict[str, Any], result: ValidationResult) -> None:
     # Opcional: presente, a engine avisa "feito para outra versão" em toda versão nova.
     if "EngineVersion" in data and not engine_at_least_min(data["EngineVersion"]):
         result.fail(f"EngineVersion {data['EngineVersion']!r} inválida: remova a chave (recomendado) ou use ≥ 5.8")
+
+    platforms = data.get("SupportedTargetPlatforms")
+    if not isinstance(platforms, list) or not set(REQUIRED_PLATFORMS) <= set(platforms):
+        result.fail(f"SupportedTargetPlatforms deve declarar {', '.join(REQUIRED_PLATFORMS)}, veio {platforms!r}")
 
     modules = data.get("Modules")
     if not isinstance(modules, list) or len(modules) < 2:
@@ -352,6 +366,57 @@ def cpp_texts(root: Path) -> dict[str, str]:
     return texts
 
 
+def validate_include_case(texts: dict[str, str]) -> list[str]:
+    """#include "X" que só casa com um arquivo do repo ignorando a caixa (funciona no Windows/Mac, quebra no Linux).
+
+    Includes sem arquivo no repo (engine, ThirdParty) são ignorados.
+    """
+    exact = set(texts)
+    lowered = {p.lower() for p in exact}
+    errors: list[str] = []
+    for rel, text in texts.items():
+        for no, line in enumerate(text.split("\n"), start=1):
+            m = QUOTED_INCLUDE_RE.match(line)
+            if not m or m.group(1).endswith(".generated.h"):
+                continue
+            inc = m.group(1).replace("\\", "/")
+            if inc.startswith(".."):
+                inc = posixpath.normpath(posixpath.join(posixpath.dirname(rel), inc))
+            if any(p == inc or p.endswith("/" + inc) for p in exact):
+                continue
+            low = inc.lower()
+            if any(p == low or p.endswith("/" + low) for p in lowered):
+                errors.append(f'{rel}:{no}: #include "{m.group(1)}" difere do arquivo real na caixa (quebra no Linux)')
+    return errors
+
+
+def validate_windows_only(texts: dict[str, str]) -> list[str]:
+    """API/macros só de Windows fora de #if PLATFORM_WINDOWS / defined(_WIN32); "\\\\" em caminho literal."""
+    errors: list[str] = []
+    for rel, text in texts.items():
+        stack: list[tuple[bool, bool]] = []  # (win do pai, ramo atual é guarda Windows) por #if aberto
+        win = False
+        for no, line in enumerate(text.split("\n"), start=1):
+            d = DIRECTIVE_RE.match(line)
+            kind, cond = (d.group(1), d.group(2)) if d else ("", "")
+            guard = kind in ("if", "ifdef", "elif") and bool(WIN_GUARD_RE.search(cond)) and "!" not in cond
+            if kind in ("if", "ifdef", "ifndef"):
+                stack.append((win, guard))
+                win = win or guard
+            elif kind in ("elif", "else") and stack:
+                win = stack[-1][0] or guard
+            elif kind == "endif" and stack:
+                win = stack.pop()[0]
+            if win or guard:
+                continue
+            hit = WIN_ONLY_RE.search(line)
+            if hit:
+                errors.append(
+                    f"{rel}:{no}: {hit.group()!r} só de Windows fora de #if PLATFORM_WINDOWS (quebra Mac/Linux)"
+                )
+    return errors
+
+
 def line_of(text: str, pos: int) -> int:
     return text.count("\n", 0, pos) + 1
 
@@ -542,6 +607,8 @@ def run_validation(
         result.fail(err)
 
     texts = cpp_texts(root)
+    for err in validate_include_case(texts) + validate_windows_only(texts):
+        result.fail(err)
     tests = automation_tests(texts)
     validate_automation_names(tests, result)
     # Aviso até o C++ do repo ganhar WithValidation/_Validate nos RPCs de servidor; depois, vira erro por padrão.

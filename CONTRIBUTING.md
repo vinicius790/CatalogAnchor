@@ -24,6 +24,10 @@ Sem Visual Studio, `py -3 tools/get_msvc.py` baixa o toolchain e `UE_SDKS_ROOT` 
 Antes do PR, rode também `python tools/validate_plugin.py --strict-docs`: as contagens de testes citadas no
 README e em `docs/` precisam bater com o código.
 
+Mexeu em header público (`Public/*.h`) ou nos comentários `/** */`? Regenere a referência com
+`python tools/gen_api_docs.py` e commite `docs/API.md` (não edite à mão); `--check` confere sem escrever, e o pytest
+reprova um `API.md` defasado. Escreva o comentário `/** */` logo antes de cada tipo, propriedade e função pública.
+
 ## Convenções de C++ (o validador reprova violações)
 
 - Primeira linha: `// Copyright 2026 Geraliza Castlevania. MIT License.`

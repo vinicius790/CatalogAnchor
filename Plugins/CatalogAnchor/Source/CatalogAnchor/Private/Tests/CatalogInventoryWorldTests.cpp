@@ -4,6 +4,7 @@
 #include "CatalogGameplayTags.h"
 #include "CatalogInventoryComponent.h"
 #include "CatalogInventoryTestItem.h"
+#include "CatalogPickupActor.h"
 #include "CatalogSaveTypes.h"
 #include "CatalogTestGuards.h"
 #include "Engine/World.h"
@@ -259,6 +260,46 @@ bool FCatalogInventoryWeightTagsWorldTest::RunTest(const FString& Parameters)
 		TestEqual(TEXT("Pai casa filhos de ItemTags e Category"), Inventory->GetItemsByTag(Parent).Num(), 2);
 	}
 
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCatalogPickupDormancyWorldTest, "CatalogAnchor.Inventory.World.PickupDormancy",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::ServerContext | EAutomationTestFlags::CommandletContext | EAutomationTestFlags::ProductFilter)
+
+bool FCatalogPickupDormancyWorldTest::RunTest(const FString& Parameters)
+{
+	using namespace CatalogInventoryWorldTestsPrivate;
+	if (CatalogTestGuards::ShouldSkipDuringPIE(*this))
+	{
+		return true;
+	}
+
+	TestTrue(TEXT("Pickup nasce dormente na rede"), GetDefault<ACatalogPickupActor>()->NetDormancy == DORM_Initial);
+
+	FTestWorldWrapper WorldWrapper;
+	if (!WorldWrapper.CreateTestWorld(EWorldType::Game) || !WorldWrapper.BeginPlayInTestWorld())
+	{
+		WorldWrapper.ForwardErrorMessages(this);
+		return false;
+	}
+	UWorld* World = WorldWrapper.GetTestWorld();
+
+	FActorSpawnParameters AlwaysSpawn;
+	AlwaysSpawn.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	AActor* Owner = World->SpawnActor<AActor>(FVector::ZeroVector, FRotator::ZeroRotator, AlwaysSpawn);
+	ACatalogPickupActor* Pickup = World->SpawnActor<ACatalogPickupActor>(FVector::ZeroVector, FRotator::ZeroRotator, AlwaysSpawn);
+	if (!TestTrue(TEXT("Atores criados"), Owner && Pickup))
+	{
+		return false;
+	}
+	UCatalogTestItemDefinition* Rock = MakeItem(/*MaxStack*/ 3, 0.f, false, false);
+	AddInventory(Owner, /*Capacity*/ 1);
+	Pickup->Item = Rock;
+	Pickup->Quantity = 5;
+
+	TestTrue(TEXT("Coleta parcial"), Pickup->OnInteract_Implementation(Owner));
+	TestEqual(TEXT("Sobra o que nao coube"), Pickup->Quantity, 2);
+	TestTrue(TEXT("Mudou Quantity: acorda para replicar"), Pickup->NetDormancy == DORM_DormantAll);
 	return true;
 }
 

@@ -55,7 +55,8 @@ void UCatalogHealthComponent::GetLifetimeReplicatedProps(TArray<FLifetimePropert
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	// Todos veem: barra de vida sobre inimigos/bonecos.
-	DOREPLIFETIME(UCatalogHealthComponent, Health);
+	// OnChanged: o OnRep só roda quando o valor muda de fato (sem rodada extra por reenvio idêntico).
+	DOREPLIFETIME_CONDITION_NOTIFY(UCatalogHealthComponent, Health, COND_None, REPNOTIFY_OnChanged);
 }
 
 float UCatalogHealthComponent::GetHealthFraction() const
