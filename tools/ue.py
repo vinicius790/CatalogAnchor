@@ -295,7 +295,9 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
     plugin_parser = sub.add_parser("build-plugin", parents=[common], help="RunUAT BuildPlugin -> dist/CatalogAnchor")
     plugin_parser.add_argument(
-        "--strict-includes", action="store_true", help="sem unity/PCH: detecta include faltando (BuildPlugin -StrictIncludes)"
+        "--strict-includes",
+        action="store_true",
+        help="sem unity/PCH: detecta include faltando (BuildPlugin -StrictIncludes)",
     )
     sub.add_parser("test", parents=[common], help="compila o editor do sample e roda os testes CatalogAnchor")
     args = parser.parse_args(argv)

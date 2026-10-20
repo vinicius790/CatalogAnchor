@@ -72,7 +72,7 @@ Compilar e testar com um comando (máquina com UE 5.8+ e toolchain C++): `py -3 
 |---|---|
 | Build Editor + Shipping + empacotamento | OK na UE 5.8.3, Windows |
 | Automation (76 testes C++ no código) | 73 passaram no `UnrealEditor-Cmd` até `876aec1`; os 3 mais novos ainda não foram executados (migração, CRC e backup de save, empilhamento, uso/transferência/peso, cooldown, vida, trace e assist, validadores) |
-| pytest (185 casos) | validador, lint de C++, `tools/ue.py`, gerador de `API.md`; CI em Python 3.10-3.14, Ubuntu + Windows (roda no host, sem engine) |
+| pytest (186 casos, todos passando no Windows + Python 3.14) | validador, lint de C++, `tools/ue.py`, gerador de `API.md`; CI em Python 3.10-3.14, Ubuntu + Windows (roda no host, sem engine) |
 | Multiplayer headless (`tools/mp_run.py`) | servidor dedicado + 2 clientes e listen server; teclas reais, HUD (estado dos widgets) e baú trancado; ver [docs/MULTIPLAYER_TESTS.md](docs/MULTIPLAYER_TESTS.md) |
 | `tools/validate_plugin.py` | manifestos, lint de C++, todo Server RPC com `WithValidation` e contagens de testes dos docs (`--strict-docs`) |
 | `tools/gen_api_docs.py --check` | [docs/API.md](docs/API.md) em dia com os headers |

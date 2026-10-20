@@ -79,7 +79,7 @@ The only verified environment is **Windows with UE 5.8.3**, and only **up to com
 | Editor build, Shipping build, plugin packaging | OK on UE 5.8.3, Windows (up to `876aec1`) |
 | Automation tests (C++) | 73 passed in `UnrealEditor-Cmd` up to `876aec1`; the repo now has 76, the 3 newer ones have **not been run** |
 | Headless multiplayer (`tools/mp_run.py`) | dedicated server + 2 clients and listen server; real key input, HUD widget state and the locked chest (up to `876aec1`); see [docs/MULTIPLAYER_TESTS.md](docs/MULTIPLAYER_TESTS.md) (pt-BR) |
-| pytest (185 cases) | validator, C++ lint, `tools/ue.py`, `API.md` generator; CI on Python 3.10-3.14, Ubuntu + Windows (host-side, no engine) |
+| pytest (186 cases, all passing on Windows + Python 3.14) | validator, C++ lint, `tools/ue.py`, `API.md` generator; CI on Python 3.10-3.14, Ubuntu + Windows (host-side, no engine) |
 | `tools/validate_plugin.py --strict-docs` | manifests, C++ lint, every Server RPC `WithValidation`, test counts cited in the docs |
 | `tools/gen_api_docs.py --check` | [docs/API.md](docs/API.md) in sync with the headers |
 
