@@ -41,27 +41,38 @@ Nenhum desses valores foi medido nem ajustado por perfil: são escolhas de proje
 
 ## 2. Riscos a verificar
 
-### R1. Pickups com `DORM_Initial` em spawn dinâmico (**teste necessário**)
+### R1. Pickups com `DORM_Initial` gerados em runtime (**coberto pelo predicado 03 do `mp_run`, ainda não executado**)
 
-**Fato:** o construtor de `ACatalogPickupActor` define `NetDormancy = DORM_Initial`. Pickups são gerados **em runtime** no
-servidor: `ServerDropItem` (`SpawnActorDeferred` + `FinishSpawning`) e o sample (`SpawnActorDeferred` no `GameMode`). O
-comentário do header diz que o ator "dorme depois da replicação inicial" e que mudanças fora de `OnInteract` exigem `FlushNetDormancy()`.
+**Fatos do código:**
 
-**Hipótese de risco (não confirmada):** `DORM_Initial` é descrito pela engine como "dormente desde o início", pensado para atores
-colocados no nível. Num ator gerado dinamicamente é **incerto** que o estado inicial (`Item`/`Quantity`) chegue aos clientes sem um
-`FlushNetDormancy()`; se não chegar, o item some para os clientes (aparece só no servidor). Também é incerto o que ocorre com um
-cliente que entra depois (late join).
+- O construtor de `ACatalogPickupActor` define `NetDormancy = DORM_Initial` e 2 Hz de `NetUpdateFrequency`; `Item` e `Quantity`
+  replicam com `DOREPLIFETIME` (sem condição).
+- Todo pickup do sample nasce em runtime, no servidor, por `SpawnActorDeferred`: `ASampleCatalogGameMode::SpawnPickup` (quatro
+  pickups no `BeginPlay` do GameMode) e `UCatalogInventoryComponent::ServerDropItem` (drop). Nos dois, `Item` e `Quantity` são
+  atribuídos **antes** de `FinishSpawning`, ou seja, antes do `BeginPlay` e da primeira replicação.
+- Coleta parcial (`OnInteract` com inventário quase cheio) reduz `Quantity` e chama `FlushNetDormancy()` (`CatalogPickupActor.cpp`,
+  por volta da linha 104); coleta total chama `Destroy()`. Pelo comentário do header, mudar `Item`/`Quantity` fora de `OnInteract`
+  exige `FlushNetDormancy()`.
+- O teste de automação `CatalogAnchor.Inventory.World.PickupDormancy` (sem rede) confere o `DORM_Initial` padrão e que a coleta
+  parcial acorda o ator; é um dos testes ainda não executados.
 
-**Por que ainda não foi pego:** nenhum predicado do `mp_run` verifica a aparição de um pickup num cliente. O roteiro manual
-(`MULTIPLAYER_TESTS.md`, MP-01) descreve "soltar com G e o pickup aparece para todos", mas esse passo consta como **não verificado**.
+**Hipótese de risco (não confirmada):** a engine descreve `DORM_Initial` como "dormente desde o início", pensado para atores
+colocados no nível. Num ator gerado dinamicamente é **incerto** que o estado inicial (`Item`/`Quantity`) chegue aos clientes; se
+não chegar, o item só existe no servidor.
 
-**Teste proposto** (dedicado + 2 clientes, `-nullrhi` basta):
+**Cobertura escrita, pendente de execução:** o caso 03 do `mp_run` (modo dedicado) tem um predicado novo: cada cliente precisa
+listar, no snapshot `focus`, os mesmos pickups que o servidor, comparando o `Prompt` (`Pegar <item> x<qtd>`, montado no cliente a
+partir de `Item` e `Quantity` replicados). Os clientes conectam depois que o GameMode gerou os pickups, então o predicado também
+cobre o late join do estado inicial. `tests/test_mp_run.py` confere só a lógica do predicado sobre linhas de log sintéticas.
+**Não executado:** precisa da engine, que está sendo reinstalada. Até lá o risco continua aberto.
 
-1. No servidor, gere um pickup por drop (cliente 2 solta com `catalog.Debug.Key G Tap`, ou chame o spawn do sample) e liste-o
-   em **cada** processo, por exemplo `GetAll CatalogPickupActor Quantity`. Esperado: 1 instância em servidor e nos dois clientes.
-2. Coleta parcial (inventário quase cheio): `Quantity` deve diminuir **nos clientes** (valida o `FlushNetDormancy`).
-3. Late join: conecte um 3º cliente depois do spawn e repita a listagem.
-4. Repita com pickups colocados no nível (se o projeto os usa) para separar "colocado" de "gerado".
+**Ainda sem cobertura** (dedicado + 2 clientes, `-nullrhi` basta):
+
+1. Pickup gerado por drop (cliente 2 solta com `catalog.Debug.Key G Tap`) aparecendo nos clientes: o predicado só vê os pickups do GameMode.
+2. Coleta parcial: `Quantity` deve diminuir **nos clientes** (valida o `FlushNetDormancy`).
+3. Cliente que entra depois de uma mudança (coleta parcial antes do join).
+4. `--mode listen`: o predicado de pickups existe só no caso 03 do modo dedicado.
+5. Pickups colocados no nível (o sample não tem), para separar "colocado" de "gerado".
 
 **Se falhar, correções a avaliar** (não aplicadas): `NetDormancy = DORM_Never` com a frequência baixa já existente (custo: o pickup
 parado entra na lista de consideração), ou acordar o ator no spawn (`FlushNetDormancy()` após `FinishSpawning`) e só depois deixá-lo
@@ -127,6 +138,9 @@ Cobertura executada (UE 5.8.3, Windows, até o commit `876aec1`; detalhes e evid
 - save e load por comando, teclas reais via `PlayerController`/Enhanced Input, estado do HUD, menu Tab;
 - os mesmos casos em servidor dedicado + 2 clientes e em listen server.
 
-**Não coberto:** aparição de pickups em clientes e late join (R1), perda/latência de pacote, muitos jogadores, reconexão e
+Escrito depois de `876aec1` e **ainda não executado**: no caso 03 (dedicado), os clientes veem os mesmos pickups que o servidor,
+inclusive quem conectou depois do spawn (R1).
+
+**Não coberto:** pickups de drop e coleta parcial vistos pelos clientes (R1), perda/latência de pacote, muitos jogadores, reconexão e
 travel, argumentos inválidos nos RPCs (R4), predição, Iris e Push Model, medidas de banda, mouse e câmera reais, gamepad, aparência
 do HUD. O `mp_run` precisa da engine; o CI público não o executa.

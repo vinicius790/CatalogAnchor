@@ -71,13 +71,14 @@ Compilar e testar com um comando (máquina com UE 5.8+ e toolchain C++): `py -3 
 | Gate | Resultado |
 |---|---|
 | Build Editor + Shipping + empacotamento | OK na UE 5.8.3, Windows |
-| Automation (76 testes C++ no código) | 73 passaram no `UnrealEditor-Cmd` até `876aec1`; os 3 mais novos ainda não foram executados (migração, CRC e backup de save, empilhamento, uso/transferência/peso, cooldown, vida, trace e assist, validadores) |
-| pytest (186 casos, todos passando no Windows + Python 3.14) | validador, lint de C++, `tools/ue.py`, gerador de `API.md`; CI em Python 3.10-3.14, Ubuntu + Windows (roda no host, sem engine) |
+| Automation (76 testes C++ no código) | 73 passaram no `UnrealEditor-Cmd` até `876aec1`; os 3 mais novos ainda não foram executados. Cobrem migração, CRC e backup de save, empilhamento, uso/transferência/peso, cooldown, vida, trace e assist, validadores |
+| pytest (187 casos, todos passando no Windows + Python 3.14) | validador, lint de C++, `tools/ue.py`, gerador de `API.md`; CI em Python 3.10-3.14, Ubuntu, macOS e Windows (roda no host, sem engine) |
 | Multiplayer headless (`tools/mp_run.py`) | servidor dedicado + 2 clientes e listen server; teclas reais, HUD (estado dos widgets) e baú trancado; ver [docs/MULTIPLAYER_TESTS.md](docs/MULTIPLAYER_TESTS.md) |
 | `tools/validate_plugin.py` | manifestos, lint de C++, todo Server RPC com `WithValidation` e contagens de testes dos docs (`--strict-docs`) |
 | `tools/gen_api_docs.py --check` | [docs/API.md](docs/API.md) em dia com os headers |
 
-Tudo acima vale até o commit `876aec1`; o que veio depois (preparo para Mac/Linux, otimizações, gamepad) **não foi reverificado** com a engine.
+Build, automação e multiplayer valem até o commit `876aec1`; o que veio depois (preparo para Mac/Linux, otimizações e escopos de
+profiling, gamepad, o predicado de pickups do `mp_run`) **não foi reverificado** com a engine.
 O CI público **não** compila C++ (não há Unreal Engine nos runners do GitHub); o `ue.yml` roda em runner self-hosted.
 Mac/Linux, mouse e câmera reais, gamepad e a aparência visual do HUD **não** foram verificados: ver [LIMITATIONS.md](LIMITATIONS.md).
 

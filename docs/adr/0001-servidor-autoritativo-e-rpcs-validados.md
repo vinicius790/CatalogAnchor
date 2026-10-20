@@ -14,7 +14,7 @@ sem validação, o que deixa a checagem de argumentos a cargo de cada autor e f�
   item) roda só com autoridade.
 - Todo `UFUNCTION(Server, ...)` é `WithValidation`. Hoje são seis: `ServerTryActivateAbility`, `ServerTryInteract`,
   `ServerBeginInteract`, `ServerEndInteract`, `ServerUseItem` e `ServerDropItem`. O `_Validate` rejeita só o que um cliente
-  legítimo nunca envia (ponteiro nulo, quantidade fora de `[1, MaxUseQuantity]`, tag inválida) e, na Unreal, reprovar derruba a
+  legítimo nunca envia (ponteiro nulo, quantidade menor que 1, acima de `MaxUseQuantity` só em `ServerUseItem`, tag inválida) e, na Unreal, reprovar derruba a
   conexão. Casos de "não tem o item" ou "não é usável" não são validação: ficam na `_Implementation` (ex.: `UseItem` revalida
   tudo, porque o pedido do cliente não é confiável).
 - RPCs sem parâmetros (`ServerTryInteract`, `ServerBeginInteract`, `ServerEndInteract`) têm `_Validate` que retorna `true`: o

@@ -10,6 +10,8 @@ Itens marcados *(não verificado)* foram escritos sem compilar: o toolchain loca
 último estado verificado (build Editor + Shipping, plugin empacotado, 73 testes de automação, multiplayer headless).
 
 - Alvos `SampleCatalogServer` e `SampleCatalogClient` no sample, para servidor dedicado e cliente cozinhados *(não verificado)*.
+  Só compilam com engine compilada do fonte: a build instalada pelo Epic Launcher recusa alvos `Server`/`Client`. O sample
+  aponta `ServerDefaultMap` e `+MapsToCook` para `/Engine/Maps/Entry` (não tem `.umap` próprio).
 - `tools/ue.py build-plugin --strict-includes` (BuildPlugin sem unity/PCH) e passo opcional no `ue.yml` (`UE_STRICT_INCLUDES=true`) *(não verificado contra a engine)*.
 - Ícone real do plugin (`Resources/Icon128.png`) no lugar do `placeholder.txt`.
 - Fins de linha dos arquivos rastreados em LF.
@@ -20,11 +22,26 @@ Itens marcados *(não verificado)* foram escritos sem compilar: o toolchain loca
   determinística. `--check` sai ≠ 0 se o arquivo estiver desatualizado (coberto pelo pytest, que roda no CI).
 - `docs/API.md`: referência de API gerada.
 - `docs/QUICKSTART.md`: do zero a "abrir um baú e salvar" em 10 passos, em C++ e Blueprint.
+- `tools/mp_run.py`, caso 03 (dedicado): predicado "clientes veem os mesmos pickups do servidor", que compara o `Prompt`
+  (`Pegar <item> x<qtd>`) no snapshot `focus`; como os clientes entram depois do spawn, cobre também o late join do estado
+  inicial (R1 de `docs/NETWORKING.md`) *(não verificado: precisa da engine)*.
+- Escopos `TRACE_CPUPROFILER_EVENT_SCOPE` para o Unreal Insights: `CatalogInteraction_Tick`, `CatalogSave_BuildPayload`,
+  `CatalogSave_ApplyLoadedPayload`, `CatalogSave_RotateBackups` e `CatalogAbility_TryActivate` *(não verificado)*.
 
 ### Alterado
+- `validate_plugin.py --strict-docs` confere também as contagens de testes do `README.md` em inglês ("N C++ tests",
+  "N automation tests", "pytest (N cases") e do `README.pt-BR.md`.
 - `README.md` reescrito como vitrine (recursos, plataformas, instalação em poucas linhas, estado real da verificação);
   nome sugerido do repositório: `CatalogAnchor`.
 - `LIMITATIONS.md`: shipping e empacotamento em Windows passam a constar como verificados; Mac/Linux seguem não executados.
+
+### Corrigido
+- Teste de slots de save lia um ponteiro para dentro de um array temporário já destruído (comportamento indefinido) *(não verificado)*.
+- Portabilidade clang (Mac/Linux): `#include <limits>` faltando em `CatalogEditorValidationTests.cpp`; constante sem uso removida
+  de `SampleCatalogWidgets.cpp` *(não verificado)*.
+- CI: matriz do `ue.yml` gerada com `jq` (caminho Windows com `\` quebrava o JSON); `release.yml` só aceita seção do CHANGELOG
+  com data e não persiste o token no checkout; `ci.yml` com `concurrency`.
+- Config: `ServerDefaultMap` e `MapsToCook` explícitos (`/Engine/Maps/Entry`); `*.png` como binário no `.gitattributes`.
 
 ## [0.5.0] — 2026-10-13
 

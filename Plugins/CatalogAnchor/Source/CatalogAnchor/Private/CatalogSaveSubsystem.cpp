@@ -9,6 +9,7 @@
 #include "HAL/FileManager.h"
 #include "HAL/PlatformTime.h"
 #include "Misc/Paths.h"
+#include "ProfilingDebugging/CpuProfilerTrace.h"
 #include "Kismet/GameplayStatics.h"
 #include "PlatformFeatures.h"
 #include "SaveGameSystem.h"
@@ -112,6 +113,7 @@ namespace CatalogSaveIO
 	// nem empurra um bom para fora. Os backups antigos são renomeados; o atual é copiado (fica no lugar até o save novo).
 	void RotateBackups(FName SlotName)
 	{
+		TRACE_CPUPROFILER_EVENT_SCOPE(CatalogSave_RotateBackups);
 		const int32 Count = ConfiguredBackupCount();
 		TArray<uint8> Current;
 		if (Count <= 0 || !TryLoadBytes(SlotFileName(SlotName), Current))
@@ -613,6 +615,7 @@ TArray<ICatalogSaveParticipant*> UCatalogSaveSubsystem::GetLiveParticipants()
 
 FCatalogSavePayload UCatalogSaveSubsystem::BuildPayload(FName SlotName)
 {
+	TRACE_CPUPROFILER_EVENT_SCOPE(CatalogSave_BuildPayload);
 	FCatalogSavePayload Payload = CurrentPayload;
 	Payload.Metadata.MapName = CatalogSaveIO::CurrentMapName(GetGameInstance());
 	Payload.Metadata.PlaytimeSeconds = GetPlaytimeSeconds();
@@ -650,6 +653,7 @@ void UCatalogSaveSubsystem::AdoptPayload(const FCatalogSavePayload& Payload)
 
 void UCatalogSaveSubsystem::ApplyLoadedPayload(const FCatalogSavePayload& Payload)
 {
+	TRACE_CPUPROFILER_EVENT_SCOPE(CatalogSave_ApplyLoadedPayload);
 	AdoptPayload(Payload);
 	// Load abre geração nova: os registrados recebem agora; os ausentes, ao registrar de novo.
 	// Save não abre: o payload saiu dos próprios participantes, não há nada novo para eles.

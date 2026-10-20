@@ -35,8 +35,6 @@
 namespace SampleWidgetsPrivate
 {
 	constexpr double MessageSeconds = 3.0;
-	/** Mesmo user index do UCatalogSaveSubsystem. */
-	constexpr int32 SaveUserIndex = 0;
 	const FLinearColor TextColor(0.95f, 0.95f, 0.95f);
 	const FLinearColor DimColor(0.6f, 0.6f, 0.6f);
 	const FLinearColor AccentColor(1.f, 0.8f, 0.2f);

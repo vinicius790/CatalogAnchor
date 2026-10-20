@@ -9,6 +9,7 @@
 #include "CatalogSaveTypes.h"
 #include "Engine/Texture2D.h"
 #include "Misc/AutomationTest.h"
+#include <limits>
 
 #if WITH_DEV_AUTOMATION_TESTS
 

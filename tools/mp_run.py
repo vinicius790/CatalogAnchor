@@ -262,6 +262,20 @@ def evaluate(case: str, logs: dict[str, list[Rec]], raw: dict[str, str]) -> list
                 (leak or seen or [None])[0] and (leak or seen)[0]["raw"],
             )
         )
+        # Pickups nascem em runtime com DORM_Initial antes de os clientes entrarem:
+        # o prompt traz Item e Quantity replicados.
+        def pickups(c: list[Rec]) -> list[str]:
+            return sorted(r["f"]["Prompt"] for r in snap(c, "focus") if "Pickup" in r["f"].get("Interactable", ""))
+
+        want = pickups(srv)
+        bad = [c for c in clis if pickups(c) != want]
+        out.append(
+            check(
+                "03 clientes veem os mesmos pickups do servidor (Item/Quantity, dormência inicial)",
+                bool(want) and bool(clis) and not bad,
+                f"servidor={want} cliente={pickups((bad or clis or [[]])[0])}",
+            )
+        )
     elif case == "04":
         chest = aimed(srv, "ChestActor_0")
         for label in ("hold_early", "hold_full"):

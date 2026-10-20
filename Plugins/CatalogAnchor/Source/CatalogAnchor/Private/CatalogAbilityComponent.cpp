@@ -7,6 +7,7 @@
 #include "GameFramework/Actor.h"
 #include "GameFramework/GameStateBase.h"
 #include "Net/UnrealNetwork.h"
+#include "ProfilingDebugging/CpuProfilerTrace.h"
 
 namespace CatalogAbilityFailure
 {
@@ -85,6 +86,7 @@ bool UCatalogAbilityComponent::IsOnCooldown(FGameplayTag AbilityTag) const
 
 bool UCatalogAbilityComponent::TryActivateAbility(FGameplayTag AbilityTag)
 {
+	TRACE_CPUPROFILER_EVENT_SCOPE(CatalogAbility_TryActivate);
 	AActor* Owner = GetOwner();
 	if (!Owner)
 	{

@@ -15,6 +15,7 @@
 #include "Engine/HitResult.h"
 #include "DrawDebugHelpers.h"
 #include "HAL/IConsoleManager.h"
+#include "ProfilingDebugging/CpuProfilerTrace.h"
 
 #if ENABLE_DRAW_DEBUG
 static TAutoConsoleVariable<int32> CVarCatalogInteractionDebug(TEXT("catalog.Interaction.Debug"), 0,
@@ -73,6 +74,7 @@ void UCatalogInteractionComponent::GetLifetimeReplicatedProps(TArray<FLifetimePr
 void UCatalogInteractionComponent::TickComponent(float DeltaTime, ELevelTick TickType,
 	FActorComponentTickFunction* ThisTickFunction)
 {
+	TRACE_CPUPROFILER_EVENT_SCOPE(CatalogInteraction_Tick);
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
 	const AActor* Owner = GetOwner();

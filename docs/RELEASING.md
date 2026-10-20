@@ -28,8 +28,9 @@ a tag contra o `VersionName` do `.uplugin`, extrai as notas do `CHANGELOG.md`, e
 - [ ] `py -3 tools/gen_api_docs.py --check` retorna OK; se não, regenere `docs/API.md` com o gerador e faça commit.
 - [ ] `py -3 -m pytest -q tests/` verde e `ruff check .` limpo (o CI roda os dois).
 - [ ] Contagens citadas em `README.md`, `README.pt-BR.md` e `docs/` (testes de automação, casos de pytest) batem com o código. O
-      `--strict-docs` só confere o padrão em português nos `docs/*.md` e no `README.md` raiz; o texto em inglês e o `README.pt-BR.md`
-      **não são conferidos pelo validador**: revise à mão.
+      `--strict-docs` confere `README.md`, `README.pt-BR.md` e `docs/*.md` (não `docs/adr/`, `CHANGELOG.md` nem `LIMITATIONS.md`),
+      nas formas "N testes C++", "N testes de automação", "N casos de pytest", "pytest (N casos", "N C++ tests",
+      "N automation tests" e "pytest (N cases"; contagem escrita de outro jeito ou fora desses arquivos: revise à mão.
 
 ## 3. Prova com a engine (runner self-hosted ou máquina com UE 5.8+)
 
@@ -38,11 +39,12 @@ Esta é a etapa que o `release.yml` não faz. Não declare uma plataforma como v
 - [ ] Em cada SO que o release vai declarar: `py -3 tools/ue.py build-plugin` (RunUAT `BuildPlugin`, saída em `dist/CatalogAnchor`) e
       `py -3 tools/ue.py test` (compila o editor do sample e roda os testes `CatalogAnchor.*`). O mesmo é o que o `ue.yml` roda
       quando as variáveis de repositório `UE_RUNNER_WINDOWS_ENABLED`, `UE_RUNNER_MACOS_ENABLED` e `UE_RUNNER_LINUX_ENABLED` estão
-      `true` e há runner com os labels `[self-hosted, <os>, ue-5.8]` (detalhes em [PLATFORMS.md](PLATFORMS.md)).
+      `true` (ou por disparo manual) e há runner com os labels `[self-hosted, <os>, ue-5.8]` (detalhes em [PLATFORMS.md](PLATFORMS.md)).
 - [ ] `py -3 tools/mp_run.py --project SampleProject/SampleCatalog.uproject --case all` (e `--mode listen`) sem predicado falho.
 - [ ] Build **Shipping** do sample/projeto de teste e empacotamento, no Windows (precedente verificado até `876aec1`) e nos demais SOs
       declarados.
-- [ ] Teste de pickups em rede (R1 de [NETWORKING.md](NETWORKING.md)): pendente; decidir se bloqueia o release.
+- [ ] Pickups em rede (R1 de [NETWORKING.md](NETWORKING.md)): o predicado de pickups do caso 03 roda no `--case all` dedicado
+      acima e ainda não foi executado; drop e coleta parcial vistos pelos clientes seguem sem cobertura. Decidir se bloqueia o release.
 - [ ] Atualizar o estado real: tabela de [PLATFORMS.md](PLATFORMS.md), [LIMITATIONS.md](../LIMITATIONS.md) e os dois READMEs
       (commit verificado, número de testes executados). **Mac e Linux nunca foram compilados**: recomendação deste checklist é só
       publicar suporte a eles depois de pelo menos um build e os testes passarem em cada um (decisão de quem publica).
@@ -56,8 +58,8 @@ Nada abaixo foi submetido ou validado contra a Fab. Conferir a documentação at
 - [ ] Conta de vendedor e página do produto (descrição, capturas, vídeo se aplicável, categoria, preço/licença).
 - [ ] Compatibilidade por versão de engine: o `.uplugin` hoje não tem `EngineVersion` de propósito; a compatibilidade com 5.9 e 6.0
       é intenção, não fato. Confirmar se a Fab exige build/teste por versão de engine submetida.
-- [ ] Ícone: `Plugins/CatalogAnchor/Resources/Icon128.png` existe (PNG 128x128 na última conferência); confirmar que está
-      **versionado** (no momento era um arquivo novo ainda não commitado) e que é arte própria.
+- [ ] Ícone: `Plugins/CatalogAnchor/Resources/Icon128.png` existe (PNG 128x128 na última conferência) e está versionado desde
+      o commit `3632107`; confirmar que é arte própria.
 - [ ] `.uplugin`: `CreatedBy` preenchido; `CreatedByURL`, `DocsURL`, `MarketplaceURL` e `SupportURL` estão **vazios** hoje. Preencher
       com URLs reais (autor, documentação, página do produto, suporte).
 - [ ] Conteúdo do pacote: só fonte, sem `Binaries/`, `Intermediate/`, `Saved/` (o `git archive` já exclui o que não está versionado).

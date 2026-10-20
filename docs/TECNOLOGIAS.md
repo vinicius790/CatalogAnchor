@@ -18,7 +18,7 @@
 | UMG (só no sample) | HUD e menu de saves montados em C++ (`WidgetTree->ConstructWidget`) |
 | Automation Framework | 76 testes C++: lógica pura e mundo (`UWorld` próprio: vida, interação, inventário, save), todos passando na 5.8.3 |
 | Python ≥ 3.10, pytest, ruff | validador, lint de C++, `tools/ue.py`, `tools/get_msvc.py`, testes do tooling |
-| GitHub Actions | `ci.yml`: ruff + validador + pytest com JUnit (Ubuntu/Windows, Python 3.10–3.14); `ue.yml`: build + automação em runner self-hosted; `release.yml`: release por tag `v*`; Dependabot |
+| GitHub Actions | `ci.yml`: ruff + validador + pytest com JUnit (Ubuntu/macOS/Windows, Python 3.10–3.14); `ue.yml`: build + automação em runner self-hosted; `release.yml`: release por tag `v*`; Dependabot |
 
 ## Decisões
 

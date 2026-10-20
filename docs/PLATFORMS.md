@@ -84,4 +84,7 @@ Variáveis opcionais por SO: `UE_ROOT_WINDOWS`, `UE_ROOT_MACOS`, `UE_ROOT_LINUX`
 
 O sample tem `SampleCatalogServer.Target.cs` e `SampleCatalogClient.Target.cs` (cópia do alvo Game com `TargetType.Server`/`Client`),
 necessários para cozinhar um servidor dedicado (principal uso em Linux). Eles ainda não foram compilados nem cozinhados.
+Exigem engine **compilada do fonte**: a build instalada pelo Epic Launcher recusa alvos `Server` e `Client` (o alvo `Game` e o
+`Editor` compilam nela). Como o sample não tem `.umap`, `DefaultEngine.ini` define `ServerDefaultMap=/Engine/Maps/Entry` e
+`DefaultGame.ini` cozinha esse mapa (`+MapsToCook=(FilePath="/Engine/Maps/Entry")`).
 Para checar includes completos (o que o clang do Mac/Linux exige), use `py -3 tools/ue.py build-plugin --strict-includes`.

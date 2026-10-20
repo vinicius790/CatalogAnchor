@@ -17,7 +17,8 @@ já teve esse problema (default 1 nunca serializado).
   que um arquivo antigo lê; (2) nunca mudar o default de um campo existente (arquivos já gravados omitiram o valor antigo e
   passariam a ler o novo em silêncio). Vale também para `FCatalogSaveRecord::Version`, controlada pelo participante.
 - `CatalogApplySaveMigration` migra em cadeia, um degrau por iteração: v0 para v1 (gera `SaveId` se faltar), v1 para v2 (Metadata e
-  Records) e, no fim, preenche um `Timestamp` ausente. Versão maior que a do plugin, ou negativa, recusa o load (`false`). O load
+  Records ficam no default, "desconhecido"; descarta pilhas de `Inventory` sem `ItemId` ou com `Quantity <= 0`) e, no fim, preenche
+  um `Timestamp` ausente. Versão maior que a do plugin, ou negativa, recusa o load (`false`). O load
   migra uma cópia: o payload de saída só muda se tudo der certo.
 - Mudar o layout do payload: incrementar `GCatalogSaveSchemaVersion`, adicionar o `case` em `CatalogApplySaveMigration` e incluir o
   campo novo no CRC (ADR 0006). O módulo avisa no startup se `ExpectedSaveSchemaVersion` (Project Settings) diverge da versão do código.

@@ -18,6 +18,8 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v5
+        with:
+          persist-credentials: false  # token com contents: write fora do .git/config enquanto pip/pytest rodam
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
@@ -37,8 +39,9 @@ jobs:
       - name: Extrair notas do CHANGELOG
         run: |
           ver="${GITHUB_REF_NAME#v}"
-          awk -v h="## [$ver]" 'index($0,h)==1{f=1;next} f&&/^## \[/{exit} f' CHANGELOG.md > notes.md
-          grep -q '[^[:space:]]' notes.md || { echo "::error::CHANGELOG.md sem seção [$ver]"; exit 1; }
+          # Só aceita cabeçalho datado (## [X.Y.Z] — AAAA-MM-DD); "— em preparação" não é releasável.
+          awk -v h="## [$ver]" 'index($0,h)==1 && substr($0,length(h)+1) ~ /^ [^ ]+ [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/{f=1;next} f&&/^## \[/{exit} f' CHANGELOG.md > notes.md
+          grep -q '[^[:space:]]' notes.md || { echo "::error::CHANGELOG.md sem seção datada [$ver] — AAAA-MM-DD (ou vazia)"; exit 1; }
 
       - name: Empacotar plugin
         run: git archive --format=zip --prefix=CatalogAnchor/ -o "CatalogAnchor-$GITHUB_REF_NAME.zip" "$GITHUB_SHA:Plugins/CatalogAnchor"

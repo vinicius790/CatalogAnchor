@@ -44,7 +44,8 @@ jobs:
             en="ENABLED_$up"; root="ROOT_$up"
             if [ "$FORK" != true ] && { [ "${!en}" = true ] || [ "$MANUAL" = true ]; }; then
               py=python3; [ "$os" = windows ] && py="py -3"
-              items+=("{\"os\":\"$os\",\"python\":\"$py\",\"root\":\"${!root}\"}")
+              # jq escapa '\' e '"' (C:\Program Files\... em JSON cru quebra o fromJSON)
+              items+=("$(jq -cn --arg os "$os" --arg python "$py" --arg root "${!root}" '{os:$os,python:$python,root:$root}')")
             fi
           done
           echo "matrix=[$(IFS=,; echo "${items[*]}")]" >> "$GITHUB_OUTPUT"

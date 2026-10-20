@@ -480,3 +480,14 @@ def test_31_else_branch_of_windows_guard_is_not_windows(clean_root: Path):
     rel = _cpp(clean_root, "Private/Else.cpp", "#if PLATFORM_WINDOWS\nint A;\n#else\nint B = _MSC_VER;\n#endif\n")
     result = vp.run_validation(clean_root)
     assert [e.split(":")[1] for e in result.errors if e.startswith(rel)] == ["5"], result.errors
+
+
+def test_32_doc_counts_cover_english_readme_and_pt_br_readme(tmp_path: Path):
+    """Contagem em inglês no README.md e a forma relaxada no README.pt-BR.md também são conferidas."""
+    (tmp_path / "README.md").write_text("Runs 77 C++ tests on the engine.\n", encoding="utf-8")
+    (tmp_path / "README.pt-BR.md").write_text("| pytest (185 casos, todos passando) | CI |\n", encoding="utf-8")
+    out = vp.doc_count_divergences(tmp_path, 76, 186)
+    assert sorted(m.split(": ", 1)[0] for m in out) == ["README.md:1", "README.pt-BR.md:1"], out
+    assert any("cita 77 testes de automação, mas o código tem 76" in m for m in out), out
+    assert any("cita 185 casos de pytest, mas tests/ tem 186" in m for m in out), out
+    assert vp.doc_count_divergences(tmp_path, 77, 185) == []

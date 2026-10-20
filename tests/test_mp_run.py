@@ -19,6 +19,7 @@ PAWN = (
     "Cd=[Catalog.Ability.Dash:0.85 Catalog.Ability.Melee:0.00] Snap=focus"
 )
 CHEST = "[Dump] NetMode=Client Interactable=Chest_0 Prompt=[Baú vazio] Blocked=1 Duration=1.5 Snap=hold_full"
+PICKUP = "[Dump] NetMode=Client Interactable=SampleCatalogPickup_{} Prompt=[Pegar {}] Blocked=0 Duration=0.0 Snap=focus"
 
 
 def test_parse_line_fields_and_brackets():
@@ -49,10 +50,18 @@ def test_focus_predicate_distinguishes_owner_and_other():
         PREFIX + PAWN.replace("Locally=1", "Locally=0").replace("Target=Chest_0 Focused=1", "Target=None Focused=0")
     )
     srv = mp_run.parse_log(PREFIX + PAWN.replace("Locally=1", "Locally=0").replace("Focused=1", "Focused=0"))
+    pick = [mp_run.parse_line(PREFIX + PICKUP.format(n, p)) for n, p in ((0, "Gema x3"), (1, "Poção x2"))]
+    for log in (owner, other, srv):
+        log += pick
     results = mp_run.evaluate("03", {"srv": srv, "cli1": owner, "cli2": other}, {})
-    assert [ok for _, ok, _ in results] == [True, True, True]
+    assert [ok for _, ok, _ in results] == [True, True, True, True]
     leaked = mp_run.evaluate("03", {"srv": srv, "cli1": owner, "cli2": owner}, {})
     assert not all(ok for _, ok, _ in leaked)
+    # Cliente sem o 2º pickup (dormência não replicou) e cliente com Quantity padrão: os dois reprovam.
+    missing = mp_run.evaluate("03", {"srv": srv, "cli1": owner, "cli2": other[:-1]}, {})
+    stale = [dict(r, f=dict(r["f"], Prompt="Pegar Gema x1")) if r is pick[0] else r for r in other]
+    default_qty = mp_run.evaluate("03", {"srv": srv, "cli1": owner, "cli2": stale}, {})
+    assert [ok for _, ok, _ in missing][3] is False and [ok for _, ok, _ in default_qty][3] is False
 
 
 def test_schedule_args_listen_host_runs_server_and_local_roles():

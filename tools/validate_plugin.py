@@ -50,8 +50,12 @@ AUTOMATION_TEST_RE = re.compile(
     r'^[ \t]*IMPLEMENT_\w*AUTOMATION_TEST\s*\(\s*\w+\s*,\s*(?:\w+\s*,\s*)?"([^"\n]*)"', re.MULTILINE
 )
 AUTOMATION_NAME_RE = re.compile(r"^CatalogAnchor(\.[A-Za-z0-9_]+){2,}$")
-DOC_AUTOMATION_COUNT_RE = re.compile(r"(\d+)\s+testes\s+(?:C\+\+|de automação|verdes)")
-DOC_PYTEST_COUNT_RE = re.compile(r"(\d+)\s+casos\s+de\s+pytest|pytest\s*\(\s*(\d+)\s+casos\s*\)")
+DOC_AUTOMATION_COUNT_RE = re.compile(
+    r"(\d+)\s+(?:testes\s+(?:C\+\+|de automação|verdes)|C\+\+\s+tests|automation\s+tests)"
+)
+DOC_PYTEST_COUNT_RE = re.compile(
+    r"(\d+)\s+(?:casos\s+de\s+pytest|pytest\s+cases)|pytest\s*\(\s*(\d+)\s+(?:casos|cases)\b"
+)
 UFUNCTION_RE = re.compile(r"\bUFUNCTION\s*\(")
 FUNCTION_NAME_RE = re.compile(r"(\w+)\s*\(")
 REQUIRED_PLATFORMS = ("Win64", "Mac", "Linux")
@@ -516,7 +520,7 @@ def pytest_case_count(tests_dir: Path) -> int | None:
 def doc_count_divergences(root: Path, automation: int, pytest_cases: int | None) -> list[str]:
     """Contagens de testes citadas no README/docs que não batem com a contagem real."""
     out: list[str] = []
-    for doc in [root / "README.md", *sorted((root / "docs").glob("*.md"))]:
+    for doc in [root / "README.md", root / "README.pt-BR.md", *sorted((root / "docs").glob("*.md"))]:
         if not doc.is_file():
             continue
         rel = doc.relative_to(root).as_posix()

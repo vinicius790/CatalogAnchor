@@ -9,12 +9,13 @@ aparece com servidor e clientes separados.
 > (UE 5.8.3, Win64 Development Editor): dedicado + 2 clientes (03/04/06) e `--mode listen` (L03/L04/L06, 14/14), standalone com
 > renderização offscreen (07/08/09, onde o HUD UMG precisa renderizar; `-nullrhi` basta para os casos de rede). Sem input humano:
 > mouse/câmera reais, gamepad e a aparência visual do HUD (só o estado dos widgets é lido).
+> Exceção: o predicado de pickups do caso 03 (clientes veem os mesmos pickups do servidor) foi escrito depois e **ainda não rodou**.
 
 ### Resultados reais por caso
 
 | Caso | Modo | Resultado | Evidência |
 | --- | --- | --- | --- |
-| 03 foco | dedicado + 2 clientes | PASS 3/3 | servidor `Focused=0`, dono `Focused=1`, outro cliente `Target=None` |
+| 03 foco | dedicado + 2 clientes | PASS 3/3 (o 4º predicado, pickups, não rodou) | servidor `Focused=0`, dono `Focused=1`, outro cliente `Target=None` |
 | 04 hold (inclui baú trancado + chave) | dedicado + 2 clientes | PASS 13/13 | `Item_Key` dada ao dono: prompt "Trancado" vira "Abrir baú"; hold de 3 s abre; dono com 39 itens (13+1+25: a chave é checada, **não consumida**) |
 | 06 habilidades | dedicado + 2 clientes | PASS 9/9 | Dash 1ª ok / 2ª `Cooldown`; OwnerOnly; Melee 75 -> 50 em servidor e clientes |
 | 07 save/load por comando | standalone | PASS 4/4 | `Save.Load` devolve vida, itens e posição |
@@ -171,7 +172,7 @@ Esperado:
 - No dedicado (1B) nenhum foco é anunciado no servidor (não há jogador local lá).
 - Ao pegar o pickup, o foco some na hora para quem mirava (alvo destruído).
 
-status: executado/ok (headless, `tools/mp_run.py --case 03`). Servidor dedicado: o pawn mirado tem `Target=<baú> Focused=0` (o dedicado não anuncia foco). Cliente dono: pawn local `Target=<baú> Focused=1`. Outro cliente: todos os pawns com `Target=None Focused=0` (OwnerOnly). NÃO verificado: o marcador visual/HUD e o foco sumir ao coletar o pickup (sem renderização).
+status: executado/ok (headless, `tools/mp_run.py --case 03`). Servidor dedicado: o pawn mirado tem `Target=<baú> Focused=0` (o dedicado não anuncia foco). Cliente dono: pawn local `Target=<baú> Focused=1`. Outro cliente: todos os pawns com `Target=None Focused=0` (OwnerOnly). NÃO verificado: o marcador visual/HUD e o foco sumir ao coletar o pickup (sem renderização). Escrito e não executado: predicado que exige o mesmo `Prompt` (`Pegar <item> x<qtd>`) dos pickups em servidor e clientes (ver R1 em [NETWORKING.md](NETWORKING.md)).
 
 ### MP-04 Interação com hold (baú, 1,5 s)
 

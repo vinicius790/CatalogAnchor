@@ -8,6 +8,7 @@
 # Assets Unreal são binários: sem diff/merge textual.
 *.uasset binary
 *.umap binary
+*.png binary
 
 # Quando houver Content/ versionado, troque pelas linhas abaixo (exige `git lfs install`):
 # *.uasset filter=lfs diff=lfs merge=lfs -text

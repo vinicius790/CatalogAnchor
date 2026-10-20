@@ -77,14 +77,14 @@ The only verified environment is **Windows with UE 5.8.3**, and only **up to com
 | Gate | Result |
 |---|---|
 | Editor build, Shipping build, plugin packaging | OK on UE 5.8.3, Windows (up to `876aec1`) |
-| Automation tests (C++) | 73 passed in `UnrealEditor-Cmd` up to `876aec1`; the repo now has 76, the 3 newer ones have **not been run** |
+| Automation (76 C++ tests in code) | 73 passed in `UnrealEditor-Cmd` up to `876aec1`; the 3 newer ones have **not been run** |
 | Headless multiplayer (`tools/mp_run.py`) | dedicated server + 2 clients and listen server; real key input, HUD widget state and the locked chest (up to `876aec1`); see [docs/MULTIPLAYER_TESTS.md](docs/MULTIPLAYER_TESTS.md) (pt-BR) |
-| pytest (186 cases, all passing on Windows + Python 3.14) | validator, C++ lint, `tools/ue.py`, `API.md` generator; CI on Python 3.10-3.14, Ubuntu + Windows (host-side, no engine) |
+| pytest (187 cases, all passing on Windows + Python 3.14) | validator, C++ lint, `tools/ue.py`, `API.md` generator; CI on Python 3.10-3.14, Ubuntu, macOS and Windows (host-side, no engine) |
 | `tools/validate_plugin.py --strict-docs` | manifests, C++ lint, every Server RPC `WithValidation`, test counts cited in the docs |
 | `tools/gen_api_docs.py --check` | [docs/API.md](docs/API.md) in sync with the headers |
 
-**Not verified:** the later changes (macOS/Linux preparation, performance work, gamepad support) have not been rebuilt or
-re-tested against the engine; macOS and Linux were never compiled; real mouse/camera, gamepad and the visual look of the
+**Not verified:** the later changes (macOS/Linux preparation, performance work and profiling scopes, gamepad support, the
+`mp_run` pickup predicate) have not been rebuilt or re-tested against the engine; macOS and Linux were never compiled; real mouse/camera, gamepad and the visual look of the
 HUD were never exercised. The public CI does **not** compile C++ (GitHub runners have no Unreal Engine); `ue.yml` runs on a
 self-hosted runner and has not run on a real runner yet. Details: [LIMITATIONS.md](LIMITATIONS.md) (pt-BR).
 

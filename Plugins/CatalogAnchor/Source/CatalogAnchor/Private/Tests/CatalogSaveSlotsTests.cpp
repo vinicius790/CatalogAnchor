@@ -189,7 +189,9 @@ bool FCatalogSaveLibrarySaveTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("SaveCatalogGame"), UCatalogBlueprintLibrary::SaveCatalogGame(Context, Slot));
 	TestTrue(TEXT("slot existe"), UCatalogBlueprintLibrary::DoesCatalogSaveSlotExist(Context, Slot));
 
-	const FCatalogSaveSlotInfo* Info = FindInfo(UCatalogBlueprintLibrary::ListCatalogSaveSlots(Context), Slot);
+	// Lista num local: FindInfo aponta para dentro dela, e um temporário morreria antes do uso abaixo.
+	const TArray<FCatalogSaveSlotInfo> Listed = UCatalogBlueprintLibrary::ListCatalogSaveSlots(Context);
+	const FCatalogSaveSlotInfo* Info = FindInfo(Listed, Slot);
 	TestTrue(TEXT("ListCatalogSaveSlots lista o slot"), Info && Info->State == ECatalogSaveSlotState::Ok);
 
 	TestTrue(TEXT("LoadCatalogGame"), UCatalogBlueprintLibrary::LoadCatalogGame(Context, Slot));
