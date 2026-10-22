@@ -86,7 +86,7 @@ jobs:
       - name: Build SampleCatalogEditor + testes de automação
         shell: bash
         run: ${{ matrix.python }} tools/ue.py test --report-dir "$REPORTS/test"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: ue-reports-${{ matrix.os }}
