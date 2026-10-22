@@ -68,7 +68,7 @@ jobs:
     steps:
       # clean: false mantém Intermediate/Binaries (ignorados pelo git) do workspace do runner: build incremental.
       # A reprodutibilidade vem do checkout --force (tracked) + git clean -fd (untracked não ignorado) + Saved/Reports.
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           clean: false
       - name: Limpar relatórios e arquivos soltos (mantém Intermediate/Binaries)
