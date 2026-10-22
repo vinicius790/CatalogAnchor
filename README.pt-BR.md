@@ -57,7 +57,7 @@ Detalhes, pré-requisitos e o que falta provar: [docs/PLATFORMS.md](docs/PLATFOR
 ## Instalação
 
 ```bash
-git clone <url-deste-repositório> CatalogAnchor
+git clone https://github.com/vinicius790/CatalogAnchor.git CatalogAnchor
 ```
 
 Copie `Plugins/CatalogAnchor/` para `SeuProjeto/Plugins/`, gere os project files e compile o target `*Editor`.

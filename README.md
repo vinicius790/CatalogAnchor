@@ -61,7 +61,7 @@ Prerequisites and what is still unproven: [docs/PLATFORMS.md](docs/PLATFORMS.md)
 ## Install in 3 lines
 
 ```bash
-git clone <this-repository-url> CatalogAnchor
+git clone https://github.com/vinicius790/CatalogAnchor.git CatalogAnchor
 cp -r CatalogAnchor/Plugins/CatalogAnchor YourProject/Plugins/   # then: Generate project files
 # build the *Editor target and enable "Catalog Anchor (UE5)" in Edit -> Plugins
 ```
